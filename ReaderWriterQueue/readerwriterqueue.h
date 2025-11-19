@@ -165,6 +165,11 @@ public:
         return Value.fetch_add( Increment, std::memory_order_acquire );
     }
 
+    bool CompareExchangeStrong(T& Expected, T Desired ) noexcept {
+        return Value.compare_exchange_strong( Expected, Desired, std::memory_order_relaxed );
+    }
+
+
 private:
     std::atomic<T> Value;
 };
