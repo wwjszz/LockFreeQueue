@@ -64,4 +64,8 @@ enable_testing()
 add_executable(linearsearchmaptest tests/linearsearchmaptest.cpp)
 target_link_libraries(linearsearchmaptest PRIVATE gtest_main)
 
+add_executable(hashtabletest tests/hashtabletest.cpp)
+target_link_libraries(hashtabletest PRIVATE gtest_main)
+
 add_test(NAME linearsearchmaptest COMMAND linearsearchmaptest)
+add_test(NAME hashtabletest COMMAND hashtabletest)

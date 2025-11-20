@@ -14,7 +14,10 @@ namespace hakle {
 template <std::size_t N>
 class LinearSearchMap {
 public:
-    void SetItem( int InKey, int InValue ) {
+    void SetItem( int InKey, int InValue ) noexcept {
+        assert(InKey != 0);
+        assert(InValue != 0);
+
         for (LinearSearchMapEntry& Entry : Data) {
             if (int CurrentKey = Entry.Key.Load(); CurrentKey != InKey) {
                 if (CurrentKey != 0)
@@ -28,7 +31,9 @@ public:
         }
     }
 
-    [[nodiscard]] int GetItem( int InKey ) const {
+    [[nodiscard]] int GetItem( int InKey ) const noexcept {
+        assert(InKey != 0);
+
         for (const LinearSearchMapEntry& Entry : Data) {
             int CurrentKey = Entry.Key.Load();
             if (CurrentKey == InKey)
