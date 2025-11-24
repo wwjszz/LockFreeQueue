@@ -166,6 +166,7 @@ public:
                     if ( CurrentKey == INVALID_KEY ) {
                         if ( TKey Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
                                  Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
+                            // TODO: error in here
                             CurrentMainHash->Entries[ Index ].Value = NewValue;
                             break;
                         }
