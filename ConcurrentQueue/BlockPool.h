@@ -24,13 +24,13 @@ public:
 
     void Add( Node* InNode ) noexcept {
         // Set AddFlag first
-        if ( InNode->Refs.fetch_add( AddFlag, std::memory_order_release ) == 0 ) {
+        if ( InNode->Refs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
             InnerAdd( InNode );
         }
     }
 
     Node* TryGet() noexcept {
-        Node* CurrentHead = Head.load( std::memory_order_acquire );
+        Node* CurrentHead = Head.load( std::memory_order_relaxed );
         while ( CurrentHead != nullptr ) {
             Node*    PrevHead = CurrentHead;
             uint32_t Refs     = CurrentHead->Refs.load( std::memory_order_relaxed );
@@ -38,7 +38,7 @@ public:
                  || ( !CurrentHead->Refs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
                                                                   std::memory_order_relaxed ) ) )  // try add refs
             {
-                CurrentHead = Head.load( std::memory_order_acquire );
+                CurrentHead = Head.load( std::memory_order_relaxed );
                 continue;
             }
 
@@ -46,12 +46,12 @@ public:
             Node* Next = CurrentHead->Next.load( std::memory_order_relaxed );
             if ( Head.compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // taken success, decrease refcount twice, for our and list's ref
-                CurrentHead->Refs.fetch_add( -2, std::memory_order_release );
+                CurrentHead->Refs.fetch_add( -2, std::memory_order_relaxed );
                 return CurrentHead;
             }
 
             // taken failed, decrease refcount
-            Refs = PrevHead->Refs.fetch_add( -1, std::memory_order_release );
+            Refs = PrevHead->Refs.fetch_add( -1, std::memory_order_relaxed );
             if ( Refs == AddFlag + 1 ) {
                 // no one is using it, add it back
                 InnerAdd( PrevHead );
