@@ -6,21 +6,41 @@
 #define BLOCKPOOL_H
 #include <atomic>
 #include <cstdint>
+#include <array>
+
+#include "common/memory.h"
 
 // BlockPool + FreeList
 namespace hakle {
 
+struct MemoryBase {
+    bool HasOwner{ false };
+};
+
 template <class T>
-struct FreeListNode {
+struct FreeListNode : virtual MemoryBase {
     std::atomic<uint32_t> Refs{ 0 };
     std::atomic<T*>       Next{ 0 };
 };
 
-// TODO: figure out memory order
+// TODO: check memory order
 template <class Node>
 class FreeList {
 public:
     static_assert( std::is_base_of_v<FreeListNode<Node>, Node>, "Node must be derived from FreeListNode<Node>" );
+
+    FreeList() = default;
+
+    ~FreeList() {
+        Node* CurrentNode = Head.load( std::memory_order_relaxed );
+        while ( CurrentNode != nullptr ) {
+            Node* Next = CurrentNode->Next.load( std::memory_order_relaxed );
+            if ( !Next->HasOwner ) {
+                HAKLE_DELETE( CurrentNode );
+            }
+            CurrentNode = Next;
+        }
+    }
 
     void Add( Node* InNode ) noexcept {
         // Set AddFlag first
@@ -87,6 +107,41 @@ private:
 
     std::atomic<Node*> Head{ nullptr };
 };
+
+template <class T, std::size_t BLOCK_SIZE>
+struct BaseBlock : virtual MemoryBase {
+    alignas( HAKLE_CACHE_LINE_SIZE ) std::array<T, BLOCK_SIZE> Elements;
+};
+
+template <class T, std::size_t BLOCK_SIZE, class BLOCK_TYPE = BaseBlock<T, BLOCK_SIZE>>
+class BlockPool {
+public:
+    static_assert( std::is_base_of_v<BaseBlock<T, BLOCK_SIZE>, BLOCK_TYPE>, "BLOCK_ TYPE must be derived from BaseBlock<T, BLOCK_SIZE>" );
+
+    explicit BlockPool( std::size_t InSize ) : Size( InSize ) {
+        Head = HAKLE_OPERATOR_NEW_ARRAY( BLOCK_TYPE, Size );
+        for ( std::size_t i = 0; i < Size; i++ ) {
+            new ( Head + i ) BLOCK_TYPE();
+            Head[ i ].HasOwner = true;
+        }
+    }
+    ~BlockPool() { HAKLE_DELETE_ARRAY( Head, Size ); }
+
+    BLOCK_TYPE* GetBlock() noexcept {
+        if ( Index.load( std::memory_order_relaxed ) >= Size )
+            return nullptr;
+
+        std::size_t CurrentIndex = Index.fetch_add( 1, std::memory_order_relaxed );
+        return Head + CurrentIndex;
+    }
+
+private:
+    std::size_t              Size{ 0 };
+    std::atomic<std::size_t> Index{ 0 };
+    BLOCK_TYPE*              Head{ nullptr };
+};
+
+
 
 }  // namespace hakle
 
