@@ -43,6 +43,40 @@ protected:
     BLOCK_TYPE*              TailBlock{ nullptr };
 };
 
+// SPMC Queue
+template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
+class ExplicitQueue : public QueueBase<BLOCK_TYPE, ExplicitQueue<BLOCK_TYPE>> {
+public:
+    struct IndexEntry;
+    struct IndexEntryArray;
+
+    using Block                        = BLOCK_TYPE;
+    using BlockAllocatorType           = ALLOCATOR_TYPE;
+    using IndexEntryAllocatorType      = typename std::allocator_traits<ALLOCATOR_TYPE>::template rebind_alloc<IndexEntry>;
+    using IndexEntryArrayAllocatorType = typename std::allocator_traits<ALLOCATOR_TYPE>::template rebind_alloc<IndexEntryArray>;
+
+private:
+    struct IndexEntry {
+        std::size_t Base;
+        Block*      Next{ nullptr };
+    };
+
+    struct IndexEntryArray {
+        std::size_t              Size{};
+        std::atomic<std::size_t> Tail{};
+        IndexEntry*              Entries{ nullptr };
+        IndexEntryArray*         Prev{ nullptr };
+    };
+
+    std::atomic<IndexEntryArray*> CurrentIndexEntryArray{ nullptr };
+
+    // used by producer only
+    std::size_t PO_IndexEntriesUsed{ 0 };
+    std::size_t PO_IndexEntriesSize{ 0 };
+    std::size_t PO_NextIndexEntry{ 0 };
+    IndexEntry* PO_Entries{ nullptr };
+};
+
 }  // namespace hakle
 
 #endif  // CONCURRENTQUEUE_H
