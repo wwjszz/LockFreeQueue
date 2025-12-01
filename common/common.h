@@ -5,6 +5,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#define HAKLE_LIKELY(x) ( __builtin_expect( !!( x ), 1 ) )
+#define HAKLE_UNLIKELY(x) ( __builtin_expect( !!( x ), 0 ) )
 
 #ifndef HAKLE_CPP_VERSION
 #if defined(_MSVC_LANG)
@@ -30,9 +32,9 @@
 
 
 #if HAKLE_CPP_VERSION >= 17
-#define CONSTEXPR_IF constexpr
+#define HAKLE_CONSTEXPR_IF if constexpr
 #else
-#define CONSTEXPR_IF
+#define HAKLE_CONSTEXPR_IF if
 #endif
 
 

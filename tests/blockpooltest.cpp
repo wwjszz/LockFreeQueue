@@ -42,7 +42,7 @@ TEST_F(BlockPoolTest, BasicBlockAllocation) {
     constexpr size_t POOL_SIZE = 10;
     constexpr size_t BLOCK_SIZE = 64;
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
     // 获取所有块
     std::vector<BaseBlock<int, BLOCK_SIZE>*> blocks;
@@ -66,7 +66,7 @@ TEST_F(BlockPoolTest, CustomBlockType) {
     constexpr size_t POOL_SIZE = 5;
     constexpr size_t BLOCK_SIZE = 32;
 
-    BlockPool<double, BLOCK_SIZE, CustomBlock> pool(POOL_SIZE);
+    BlockPool<CustomBlock> pool(POOL_SIZE);
 
     for (size_t i = 0; i < POOL_SIZE; ++i) {
         auto* block = pool.GetBlock();
@@ -84,7 +84,7 @@ TEST_F(BlockPoolTest, ElementAccess) {
     constexpr size_t POOL_SIZE = 3;
     constexpr size_t BLOCK_SIZE = 8;
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
     auto* block = pool.GetBlock();
     ASSERT_NE(block, nullptr);
@@ -105,7 +105,7 @@ TEST_F(BlockPoolTest, CacheLineAlignment) {
     constexpr size_t POOL_SIZE = 2;
     constexpr size_t BLOCK_SIZE = 16;
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
     auto* block1 = pool.GetBlock();
     auto* block2 = pool.GetBlock();
@@ -132,7 +132,7 @@ TEST_F(BlockPoolTest, ThreadSafety) {
     constexpr size_t NUM_THREADS = 8;
     constexpr size_t BLOCKS_PER_THREAD = 20; // 总共需要160个，但池只有100个
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
     std::atomic<size_t> successful_allocations{0};
     std::atomic<size_t> failed_allocations{0};
     std::vector<std::thread> threads;
@@ -193,7 +193,7 @@ TEST_F(BlockPoolTest, ThreadSafety) {
 
 // 测试边界情况：大小为0的池
 TEST_F(BlockPoolTest, ZeroSizedPool) {
-    BlockPool<int, 64> pool(0);
+    BlockPool<BaseBlock<int, 64>> pool(0);
 
     auto* block = pool.GetBlock();
     EXPECT_EQ(block, nullptr);
@@ -202,7 +202,7 @@ TEST_F(BlockPoolTest, ZeroSizedPool) {
 // 测试边界情况：大小为1的池
 TEST_F(BlockPoolTest, SingleBlockPool) {
     constexpr size_t BLOCK_SIZE = 16;
-    BlockPool<int, BLOCK_SIZE> pool(1);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(1);
 
     auto* block1 = pool.GetBlock();
     ASSERT_NE(block1, nullptr);
@@ -220,7 +220,7 @@ TEST_F(BlockPoolTest, MemoryLayout) {
     constexpr size_t POOL_SIZE = 3;
     constexpr size_t BLOCK_SIZE = 4;
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
     std::vector<BaseBlock<int, BLOCK_SIZE>*> blocks;
     for (size_t i = 0; i < POOL_SIZE; ++i) {
@@ -249,7 +249,7 @@ TEST_F(BlockPoolTest, TypeConstraints) {
         // 可以添加自定义成员
     };
 
-    BlockPool<float, 16, GoodBlock> good_pool(5);
+    BlockPool<GoodBlock> good_pool(5);
     EXPECT_TRUE(true); // 如果能编译到这里就说明类型约束正确
 
     // 下面这行应该导致编译错误（取消注释测试）
@@ -269,7 +269,7 @@ TEST_F(BlockPoolTest, PerformanceLargePool) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+    BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
     // 分配所有块
     for (size_t i = 0; i < POOL_SIZE; ++i) {
@@ -297,7 +297,7 @@ TEST_F(BlockPoolTest, Destruction) {
 
     // 在作用域内创建和销毁池
     {
-        BlockPool<int, BLOCK_SIZE> pool(POOL_SIZE);
+        BlockPool<BaseBlock<int, BLOCK_SIZE>> pool(POOL_SIZE);
 
         // 分配一些块
         for (size_t i = 0; i < POOL_SIZE / 2; ++i) {

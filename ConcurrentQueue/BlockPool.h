@@ -4,9 +4,11 @@
 
 #ifndef BLOCKPOOL_H
 #define BLOCKPOOL_H
+#include "common/allocator.h"
+
+#include <array>
 #include <atomic>
 #include <cstdint>
-#include <array>
 
 #include "common/memory.h"
 
@@ -21,6 +23,11 @@ template <class T>
 struct FreeListNode : virtual MemoryBase {
     std::atomic<uint32_t> Refs{ 0 };
     std::atomic<T*>       Next{ 0 };
+};
+
+template <class T, std::size_t BLOCK_SIZE>
+struct BaseBlock : virtual MemoryBase {
+    alignas( HAKLE_CACHE_LINE_SIZE ) std::array<T, BLOCK_SIZE> Elements;
 };
 
 // TODO: check memory order
@@ -108,24 +115,22 @@ private:
     std::atomic<Node*> Head{ nullptr };
 };
 
-template <class T, std::size_t BLOCK_SIZE>
-struct BaseBlock : virtual MemoryBase {
-    alignas( HAKLE_CACHE_LINE_SIZE ) std::array<T, BLOCK_SIZE> Elements;
-};
-
-template <class T, std::size_t BLOCK_SIZE, class BLOCK_TYPE = BaseBlock<T, BLOCK_SIZE>>
+template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
 class BlockPool {
 public:
-    static_assert( std::is_base_of_v<BaseBlock<T, BLOCK_SIZE>, BLOCK_TYPE>, "BLOCK_ TYPE must be derived from BaseBlock<T, BLOCK_SIZE>" );
+    using Allocator = ALLOCATOR_TYPE;
 
     explicit BlockPool( std::size_t InSize ) : Size( InSize ) {
-        Head = HAKLE_OPERATOR_NEW_ARRAY( BLOCK_TYPE, Size );
+        Head = Allocator::allocate( Size );
         for ( std::size_t i = 0; i < Size; i++ ) {
-            new ( Head + i ) BLOCK_TYPE();
+            Allocator::construct( Head + i );
             Head[ i ].HasOwner = true;
         }
     }
-    ~BlockPool() { HAKLE_DELETE_ARRAY( Head, Size ); }
+    ~BlockPool() {
+        Allocator::Destroy( Head, Size );
+        Allocator::Deallocate( Head, Size );
+    }
 
     BLOCK_TYPE* GetBlock() noexcept {
         if ( Index.load( std::memory_order_relaxed ) >= Size )
@@ -141,7 +146,62 @@ private:
     BLOCK_TYPE*              Head{ nullptr };
 };
 
+template <class BLOCK_TYPE>
+class BlockManagerBase {
+public:
+    virtual ~BlockManagerBase() = default;
+    enum class AllocMode { CanAlloc, CannotAlloc };
 
+    virtual BLOCK_TYPE* RequisitionBlock( AllocMode InMode ) = 0;
+    virtual void        ReturnBlocks( BLOCK_TYPE* InBlock )  = 0;
+    virtual void        ReturnBlock( BLOCK_TYPE* InBlock )   = 0;
+};
+
+// We set a block pool and a free list
+template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
+class HakleBlockManager : public BlockManagerBase<BLOCK_TYPE> {
+public:
+    using BaseManager = BlockManagerBase<BLOCK_TYPE>;
+    using AllocMode   = typename BaseManager::AllocMode;
+    using Allocator = ALLOCATOR_TYPE;
+
+    explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
+    ~HakleBlockManager() override = default;
+
+    BLOCK_TYPE* RequisitionBlock( AllocMode Mode ) override {
+        BLOCK_TYPE* Block = Pool.GetBlock();
+        if ( Block != nullptr ) {
+            return Block;
+        }
+
+        Block = FreeList.TryGet();
+        if ( Block != nullptr ) {
+            return Block;
+        }
+
+        HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return nullptr; }
+        else {
+            // When alloc mode is CanAlloc, we allocate a new block
+            // If user finishes using the block, it must be returned to the free list
+            BLOCK_TYPE* NewBlock = Allocator::Allocate();
+            Allocator::Construct( NewBlock );
+            return NewBlock;
+        }
+    }
+
+    void ReturnBlocks( BLOCK_TYPE* InBlock ) override { FreeList.Add( InBlock ); }
+    void ReturnBlock( BLOCK_TYPE* InBlock ) override {
+        while ( InBlock != nullptr ) {
+            BLOCK_TYPE* Next = InBlock->Next;
+            FreeList.Add( InBlock );
+            InBlock = Next;
+        }
+    }
+
+private:
+    BlockPool<BLOCK_TYPE> Pool;
+    FreeList<BLOCK_TYPE>  FreeList;
+};
 
 }  // namespace hakle
 
