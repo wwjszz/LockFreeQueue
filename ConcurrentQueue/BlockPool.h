@@ -20,14 +20,9 @@ struct MemoryBase {
 };
 
 template <class T>
-struct FreeListNode : virtual MemoryBase {
+struct FreeListNode : MemoryBase {
     std::atomic<uint32_t> Refs{ 0 };
     std::atomic<T*>       Next{ 0 };
-};
-
-template <class T, std::size_t BLOCK_SIZE>
-struct BaseBlock : virtual MemoryBase {
-    alignas( HAKLE_CACHE_LINE_SIZE ) std::array<T, BLOCK_SIZE> Elements;
 };
 
 // TODO: check memory order
@@ -163,7 +158,7 @@ class HakleBlockManager : public BlockManagerBase<BLOCK_TYPE> {
 public:
     using BaseManager = BlockManagerBase<BLOCK_TYPE>;
     using AllocMode   = typename BaseManager::AllocMode;
-    using Allocator = ALLOCATOR_TYPE;
+    using AllocatorType = ALLOCATOR_TYPE;
 
     explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
     ~HakleBlockManager() override = default;
@@ -183,8 +178,8 @@ public:
         else {
             // When alloc mode is CanAlloc, we allocate a new block
             // If user finishes using the block, it must be returned to the free list
-            BLOCK_TYPE* NewBlock = Allocator::Allocate();
-            Allocator::Construct( NewBlock );
+            BLOCK_TYPE* NewBlock = AllocatorType::Allocate();
+            AllocatorType::Construct( NewBlock );
             return NewBlock;
         }
     }

@@ -37,6 +37,9 @@
 #define HAKLE_CONSTEXPR_IF if
 #endif
 
-
+#define HAKLE_TRY try
+#define HAKLE_CATCH(...) catch( __VA_ARGS__ )
+#define HAKLE_THROW(expr) throw (expr)
+#define HAKLE_RETHROW throw
 
 #endif //COMMON_H

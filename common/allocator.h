@@ -21,7 +21,6 @@ public:
     using size_type       = size_t;
     using difference_type = std::ptrdiff_t;
 
-public:
     static constexpr Tp* Allocate() { return HAKLE_OPERATOR_NEW( Tp ); }
     static constexpr Tp* Allocate( size_type n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
 
