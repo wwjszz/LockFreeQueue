@@ -17,6 +17,10 @@ namespace hakle {
 
 template <class BLOCK_TYPE>
 struct BlockTraits {
+    static_assert( BLOCK_TYPE::BlockSize > 0 && ( BLOCK_TYPE::BlockSize & ( BLOCK_TYPE::BlockSize - 1 ) ) == 0,
+                   "BlockSize must be power of 2 and greater than 0" );
+
+    // TODO: CeilToPow2
     constexpr static std::size_t BlockSize = BLOCK_TYPE::BlockSize;
     using ValueType                        = typename BLOCK_TYPE::ValueType;
     using BlockType                        = BLOCK_TYPE;
@@ -28,11 +32,11 @@ struct MemoryBase {
 
 template <class T>
 struct FreeListNode : MemoryBase {
-    std::atomic<uint32_t> Refs{ 0 };
-    std::atomic<T*>       Next{ 0 };
+    std::atomic<uint32_t> FreeListRefs{ 0 };
+    std::atomic<T*>       FreeListNext{ 0 };
 };
 
-// TODO: check memory order
+// TODO: check memory order, Allocator!!!!
 template <class Node>
 class FreeList {
 public:
@@ -43,8 +47,8 @@ public:
     ~FreeList() {
         Node* CurrentNode = Head.load( std::memory_order_relaxed );
         while ( CurrentNode != nullptr ) {
-            Node* Next = CurrentNode->Next.load( std::memory_order_relaxed );
-            if ( !Next->HasOwner ) {
+            Node* Next = CurrentNode->FreeListNext.load( std::memory_order_relaxed );
+            if ( !CurrentNode->HasOwner ) {
                 HAKLE_DELETE( CurrentNode );
             }
             CurrentNode = Next;
@@ -53,7 +57,7 @@ public:
 
     void Add( Node* InNode ) noexcept {
         // Set AddFlag first
-        if ( InNode->Refs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
+        if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
             InnerAdd( InNode );
         }
     }
@@ -62,25 +66,25 @@ public:
         Node* CurrentHead = Head.load( std::memory_order_relaxed );
         while ( CurrentHead != nullptr ) {
             Node*    PrevHead = CurrentHead;
-            uint32_t Refs     = CurrentHead->Refs.load( std::memory_order_relaxed );
+            uint32_t Refs     = CurrentHead->FreeListRefs.load( std::memory_order_relaxed );
             if ( ( Refs & RefsMask ) == 0  // check if already taken or adding
-                 || ( !CurrentHead->Refs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
-                                                                  std::memory_order_relaxed ) ) )  // try add refs
+                 || ( !CurrentHead->FreeListRefs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
+                                                                          std::memory_order_relaxed ) ) )  // try add refs
             {
                 CurrentHead = Head.load( std::memory_order_relaxed );
                 continue;
             }
 
             // try Taken
-            Node* Next = CurrentHead->Next.load( std::memory_order_relaxed );
+            Node* Next = CurrentHead->FreeListNext.load( std::memory_order_relaxed );
             if ( Head.compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // taken success, decrease refcount twice, for our and list's ref
-                CurrentHead->Refs.fetch_add( -2, std::memory_order_relaxed );
+                CurrentHead->FreeListRefs.fetch_add( -2, std::memory_order_relaxed );
                 return CurrentHead;
             }
 
             // taken failed, decrease refcount
-            Refs = PrevHead->Refs.fetch_add( -1, std::memory_order_relaxed );
+            Refs = PrevHead->FreeListRefs.fetch_add( -1, std::memory_order_relaxed );
             if ( Refs == AddFlag + 1 ) {
                 // no one is using it, add it back
                 InnerAdd( PrevHead );
@@ -99,11 +103,11 @@ private:
         Node* CurrentHead = Head.load( std::memory_order_relaxed );
         while ( true ) {
             // first update next then refs
-            InNode->Next.store( CurrentHead, std::memory_order_relaxed );
-            InNode->Refs.store( 1, std::memory_order_release );
+            InNode->FreeListNext.store( CurrentHead, std::memory_order_relaxed );
+            InNode->FreeListRefs.store( 1, std::memory_order_release );
             if ( !Head.compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // check if someone already using it
-                if ( InNode->Refs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
+                if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
                     continue;
                 }
             }
@@ -120,18 +124,19 @@ private:
 template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
 class BlockPool {
 public:
-    using Allocator = ALLOCATOR_TYPE;
+    using AllocatorType   = ALLOCATOR_TYPE;
+    using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
     explicit BlockPool( std::size_t InSize ) : Size( InSize ) {
-        Head = Allocator::allocate( Size );
+        Head = AllocatorTraits::Allocate( Allocator, Size );
         for ( std::size_t i = 0; i < Size; i++ ) {
-            Allocator::construct( Head + i );
+            AllocatorTraits::Construct( Allocator, Head + i );
             Head[ i ].HasOwner = true;
         }
     }
     ~BlockPool() {
-        Allocator::Destroy( Head, Size );
-        Allocator::Deallocate( Head, Size );
+        AllocatorTraits::Destroy( Allocator, Head, Size );
+        AllocatorTraits::Deallocate( Allocator, Head, Size );
     }
 
     BLOCK_TYPE* GetBlock() noexcept {
@@ -143,6 +148,8 @@ public:
     }
 
 private:
+    // TODO: compress allocator
+    AllocatorType            Allocator;
     std::size_t              Size{ 0 };
     std::atomic<std::size_t> Index{ 0 };
     BLOCK_TYPE*              Head{ nullptr };
@@ -152,8 +159,8 @@ template <class ALLOCATOR_TYPE>
 class BlockManagerBase {
 public:
     using AllocatorType                    = ALLOCATOR_TYPE;
-    using AllocatorTraits                  = HakeAllocatorTraits<AllocatorType>;
-    using BlockType                        = typename AllocatorTraits::ValueType;
+    using BlockAllocatorTraits             = HakeAllocatorTraits<AllocatorType>;
+    using BlockType                        = typename BlockAllocatorTraits::ValueType;
     using BlockTraits                      = BlockTraits<BlockType>;
     constexpr static std::size_t BlockSize = BlockTraits::BlockSize;
     using ValueType                        = typename BlockTraits::ValueType;
@@ -172,8 +179,8 @@ class HakleBlockManager : public BlockManagerBase<ALLOCATOR_TYPE> {
 public:
     using BaseManager = BlockManagerBase<ALLOCATOR_TYPE>;
     using BaseManager::BlockSize;
-    using typename BaseManager::AllocatorTraits;
     using typename BaseManager::AllocatorType;
+    using typename BaseManager::BlockAllocatorTraits;
     using typename BaseManager::BlockTraits;
     using typename BaseManager::BlockType;
     using typename BaseManager::ValueType;
@@ -194,12 +201,16 @@ public:
             return Block;
         }
 
-        HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return nullptr; }
+        // TODO: constexpr
+        // HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return nullptr; }
+        if ( Mode == AllocMode::CannotAlloc ) {
+            return nullptr;
+        }
         else {
             // When alloc mode is CanAlloc, we allocate a new block
             // If user finishes using the block, it must be returned to the free list
-            BlockType* NewBlock = AllocatorTraits::Allocate( Allocator );
-            AllocatorTraits::Construct( Allocator, NewBlock );
+            BlockType* NewBlock = BlockAllocatorTraits::Allocate( Allocator );
+            BlockAllocatorTraits::Construct( Allocator, NewBlock );
             return NewBlock;
         }
     }

@@ -80,7 +80,7 @@ public:
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
 
     static constexpr void Deallocate( Pointer ptr ) noexcept { HAKLE_OPERATOR_DELETE( ptr ); }
-    static constexpr void Deallocate( Pointer ptr, SizeType n ) noexcept { HAKLE_OPERATOR_DELETE_ARRAY( ptr, n ); }
+    static constexpr void Deallocate( Pointer ptr, [[maybe_unused]] SizeType n ) noexcept { Deallocate( ptr ); }
 
     template <class... Args>
     static constexpr void Construct( Pointer ptr, Args&&... args ) {
