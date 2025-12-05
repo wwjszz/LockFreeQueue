@@ -6,6 +6,7 @@
 #define CONCURRENTQUEUE_H
 
 #include "BlockPool.h"
+#include "common/CompressPair.h"
 #include "common/common.h"
 #include "common/utility.h"
 
@@ -17,18 +18,18 @@ namespace hakle {
 struct BlockCheckPolicy {
     virtual ~BlockCheckPolicy() = default;
 
-    virtual bool IsEmpty() const                                      = 0;
-    virtual bool SetEmpty( std::size_t Index )                        = 0;
-    virtual bool SetSomeEmpty( std::size_t Index, std::size_t Count ) = 0;
-    virtual void SetAllEmpty()                                        = 0;
-    virtual void Reset()                                              = 0;
+    [[nodiscard]] virtual bool IsEmpty() const                                      = 0;
+    virtual bool               SetEmpty( std::size_t Index )                        = 0;
+    virtual bool               SetSomeEmpty( std::size_t Index, std::size_t Count ) = 0;
+    virtual void               SetAllEmpty()                                        = 0;
+    virtual void               Reset()                                              = 0;
 };
 
 template <std::size_t BLOCK_SIZE>
 struct FlagsCheckPolicy : BlockCheckPolicy {
     ~FlagsCheckPolicy() override = default;
 
-    bool IsEmpty() const override {
+    [[nodiscard]] bool IsEmpty() const override {
         for ( auto& Flag : Flags ) {
             if ( !Flag.load( std::memory_order_relaxed ) ) {
                 return false;
@@ -72,7 +73,7 @@ template <std::size_t BLOCK_SIZE>
 struct CounterCheckPolicy : BlockCheckPolicy {
     ~CounterCheckPolicy() override = default;
 
-    bool IsEmpty() const override {
+    [[nodiscard]] bool IsEmpty() const override {
         if ( Counter.load( std::memory_order_relaxed ) == BLOCK_SIZE ) {
             std::atomic_thread_fence( std::memory_order_acquire );
             return true;
@@ -110,7 +111,7 @@ struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {
     T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements ) + Index; }
     const T* operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements ) + Index; }
 
-    alignas( T ) std::byte Elements[ sizeof( T ) * BLOCK_SIZE ];
+    alignas( T ) std::byte Elements[ sizeof( T ) * BLOCK_SIZE ]{};
     HakleBlock* Next{ nullptr };
 };
 
@@ -121,11 +122,11 @@ template <class T, std::size_t BLOCK_SIZE>
 using HakleCounterBlock = HakleBlock<T, BLOCK_SIZE, CounterCheckPolicy<BLOCK_SIZE>>;
 
 // TODO: manager traits
-template <class BLOCK_MANAGER_TYPE>
+template <class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
 struct QueueBase {
 public:
     using BlockManagerType                 = BLOCK_MANAGER_TYPE;
-    using BlockType                        = typename BlockManagerType::BlockType;
+    using BlockType                        = BLOCK_TYPE;
     using ValueType                        = typename BlockManagerType::ValueType;
     constexpr static std::size_t BlockSize = BlockManagerType::BlockSize;
 
@@ -136,13 +137,13 @@ public:
 
     virtual ~QueueBase() = default;
 
-    std::size_t Size() const noexcept {
+    [[nodiscard]] std::size_t Size() const noexcept {
         std::size_t Tail = TailIndex.load( std::memory_order_relaxed );
         std::size_t Head = HeadIndex.load( std::memory_order_relaxed );
         return CircularLessThan( Head, Tail ) ? Tail - Head : 0;
     }
 
-    std::size_t GetTail() const noexcept { return TailIndex.load( std::memory_order_relaxed ); }
+    [[nodiscard]] std::size_t GetTail() const noexcept { return TailIndex.load( std::memory_order_relaxed ); }
 
 protected:
     std::atomic<std::size_t> HeadIndex{};
@@ -153,10 +154,10 @@ protected:
 };
 
 // SPMC Queue
-template <class BLOCK_MANAGER_TYPE>
-class ExplicitQueue : public QueueBase<BLOCK_MANAGER_TYPE> {
+template <class BLOCK_TYPE, class BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
+class ExplicitQueue : public QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
-    using Base = QueueBase<BLOCK_MANAGER_TYPE>;
+    using Base = QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
 
     using Base::BlockSize;
     using typename Base::AllocMode;
@@ -184,7 +185,7 @@ public:
         if ( InitialSize < 2 ) {
             InitialSize = 2;
         }
-        PO_IndexEntriesSize = InitialSize;
+        PO_IndexEntriesSize() = InitialSize;
 
         CreateNewBlockIndexArray( 0 );
     }
@@ -194,9 +195,9 @@ public:
             // first, we find the first block that's half dequeued
             BlockType* HalfDequeuedBlock = nullptr;
             if ( ( this->HeadIndex.load( std::memory_order_relaxed ) & ( BlockSize - 1 ) ) != 0 ) {
-                std::size_t i = ( PO_NextIndexEntry - PO_IndexEntriesUsed ) & ( PO_IndexEntriesSize - 1 );
+                std::size_t i = ( PO_NextIndexEntry() - PO_IndexEntriesUsed() ) & ( PO_IndexEntriesSize() - 1 );
                 while ( CircularLessThan( this->PO_PrevEntries[ i ].Base + BlockSize, this->HeadIndex.load( std::memory_order_relaxed ) ) ) {
-                    i = ( i + 1 ) & ( PO_IndexEntriesSize - 1 );
+                    i = ( i + 1 ) & ( PO_IndexEntriesSize() - 1 );
                 }
                 HalfDequeuedBlock = PO_PrevEntries[ i ].InnerBlock;
             }
@@ -216,7 +217,7 @@ public:
                 std::size_t Temp      = this->TailIndex.load( std::memory_order_relaxed ) & ( BlockSize - 1 );
                 std::size_t LastIndex = Temp == 0 ? BlockSize : Temp;
                 while ( i != BlockSize && ( Block != this->TailBlock || i != LastIndex ) ) {
-                    ValueAllocatorTraits::Destroy( ValueAllocator, ( *Block )[ i++ ] );
+                    ValueAllocatorTraits::Destroy( ValueAllocator(), ( *Block )[ i++ ] );
                 }
             } while ( Block != this->TailBlock );
         }
@@ -235,9 +236,9 @@ public:
         IndexEntryArray* Current = CurrentIndexEntryArray.load( std::memory_order_relaxed );
         while ( Current != nullptr ) {
             IndexEntryArray* Prev = Current->Prev;
-            IndexEntryAllocatorTraits::Deallocate( IndexEntryAllocator, Current->Entries, Current->Size );
-            IndexEntryArrayAllocatorTraits::Destroy( IndexEntryArrayAllocator, Current );
-            IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator, Current );
+            IndexEntryAllocatorTraits::Deallocate( IndexEntryAllocator(), Current->Entries, Current->Size );
+            IndexEntryArrayAllocatorTraits::Destroy( IndexEntryArrayAllocator(), Current );
+            IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator(), Current );
             Current = Prev;
         }
     }
@@ -250,7 +251,7 @@ public:
         std::size_t InnerIndex       = CurrentTailIndex & ( BlockSize - 1 );
         if ( InnerIndex == 0 ) {
             BlockType*  OldTailBlock        = this->TailBlock;
-            std::size_t OldIndexEntriesUsed = PO_IndexEntriesUsed;
+            std::size_t OldIndexEntriesUsed = PO_IndexEntriesUsed();
             // zero, in fact
             // we must find a new block
             if ( this->TailBlock != nullptr && this->TailBlock->Next->IsEmpty() ) {
@@ -261,10 +262,10 @@ public:
             else {
                 // we need to find a new block index and get a new block from block manager
                 // TODO: add a overflow check and MAX_SIZE check
-                if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed == PO_IndexEntriesSize ) {
+                if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
                     // need to create a new index entry array
                     HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return false; }
-                    else if ( !CreateNewBlockIndexArray( PO_IndexEntriesUsed ) ) {
+                    else if ( !CreateNewBlockIndexArray( PO_IndexEntriesUsed() ) ) {
                         return false;
                     }
                 }
@@ -284,26 +285,26 @@ public:
                 }
                 this->TailBlock = NewBlock;
                 // get a new block
-                ++PO_IndexEntriesUsed;
+                ++PO_IndexEntriesUsed();
             }
 
             // TODO: we need an option to indicate whether to enable exceptions
             HAKLE_CONSTEXPR_IF( !std::is_nothrow_constructible<ValueType, Args&&...>::value ) {
                 // we need to handle exception here
-                HAKLE_TRY { ValueAllocatorType::Construct( ValueAllocator, ( *( this->TailBlock ) )[ InnerIndex ], std::forward<Args>( args )... ); }
+                HAKLE_TRY { ValueAllocatorType::Construct( ((ValueAllocator)), ( *( this->TailBlock ) )[ InnerIndex ], std::forward<Args>( args )... ); }
                 HAKLE_CATCH( ... ) {
                     // when OldTailBlock is nullptr, we should not go back to prevent block leak
                     this->TailBlock     = OldTailBlock == nullptr ? this->TailBlock : OldTailBlock;
-                    PO_IndexEntriesUsed = OldIndexEntriesUsed;
+                    PO_IndexEntriesUsed() = OldIndexEntriesUsed;
                     HAKLE_RETHROW;
                 }
             }
 
-            IndexEntry& Entry = this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Entries[ PO_NextIndexEntry ];
+            IndexEntry& Entry = this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Entries[ PO_NextIndexEntry() ];
             Entry.Base        = CurrentTailIndex;
             Entry.InnerBlock  = this->TailBlock;
-            this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Tail.store( PO_NextIndexEntry, std::memory_order_release );
-            PO_NextIndexEntry = ( PO_NextIndexEntry + 1 ) & ( PO_IndexEntriesSize - 1 );
+            this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Tail.store( PO_NextIndexEntry(), std::memory_order_release );
+            PO_NextIndexEntry() = ( PO_NextIndexEntry() + 1 ) & ( PO_IndexEntriesSize() - 1 );
 
             HAKLE_CONSTEXPR_IF( !std::is_nothrow_constructible<ValueType, Args&&...>::value ) {
                 this->TailIndex.store( NewTailIndex, std::memory_order_release );
@@ -311,7 +312,7 @@ public:
             }
         }
 
-        ValueAllocatorTraits::Construct( ValueAllocator, ( *( this->TailBlock ) )[ InnerIndex ], std::forward<Args>( args )... );
+        ValueAllocatorTraits::Construct( ValueAllocator(), ( *( this->TailBlock ) )[ InnerIndex ], std::forward<Args>( args )... );
 
         this->TailIndex.store( NewTailIndex, std::memory_order_release );
         return true;
@@ -349,19 +350,19 @@ public:
                 HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U, ValueType>::value ) {
                     struct Guard {
                         BlockType*  Block;
-                        std::size_t Index;
+                        CompressPair<std::size_t, ValueAllocatorType> ValueAllocatorPair;
 
                         ~Guard() {
-                            ( *Block )[ Index ]->~ValueType();
-                            Block->SetEmpty( Index );
+                            ValueAllocatorTraits::Destroy( ValueAllocatorPair.Second(), (*Block)[ ValueAllocatorPair.First() ] );
+                            Block->SetEmpty( ValueAllocatorPair.First() );
                         }
-                    } guard{ DequeueBlock, InnerIndex };
+                    } guard{ DequeueBlock, {InnerIndex, ValueAllocator()}};
 
                     Element = std::move( Value );
                 }
                 else {
                     Element = std::move( Value );
-                    Value.~ValueType();
+                    ValueAllocatorTraits::Destroy( ValueAllocator(), &Value );
                     DequeueBlock->SetEmpty( InnerIndex );
                 }
                 return true;
@@ -386,43 +387,43 @@ private:
     };
 
     bool CreateNewBlockIndexArray( std::size_t FilledSlot ) noexcept {
-        std::size_t SizeMask = PO_IndexEntriesSize - 1;
+        std::size_t SizeMask = PO_IndexEntriesSize() - 1;
 
-        PO_IndexEntriesSize <<= 1;
+        PO_IndexEntriesSize() <<= 1;
         IndexEntryArray* NewIndexEntryArray = nullptr;
         IndexEntry*      NewEntries         = nullptr;
 
         HAKLE_TRY {
-            NewIndexEntryArray = IndexEntryArrayAllocatorTraits::Allocate( IndexEntryArrayAllocator );
-            NewEntries         = IndexEntryAllocatorTraits::Allocate( IndexEntryAllocator, PO_IndexEntriesSize );
+            NewIndexEntryArray = IndexEntryArrayAllocatorTraits::Allocate( IndexEntryArrayAllocator() );
+            NewEntries         = IndexEntryAllocatorTraits::Allocate( IndexEntryAllocator(), PO_IndexEntriesSize() );
         }
         HAKLE_CATCH( ... ) {
             if ( NewIndexEntryArray ) {
-                IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator, NewIndexEntryArray );
+                IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator(), NewIndexEntryArray );
                 NewIndexEntryArray = nullptr;
             }
-            PO_IndexEntriesSize >>= 1;
+            PO_IndexEntriesSize() >>= 1;
             return false;
         }
 
         // noexcept
-        IndexEntryArrayAllocatorTraits::Construct( IndexEntryArrayAllocator, NewIndexEntryArray );
+        IndexEntryArrayAllocatorTraits::Construct( IndexEntryArrayAllocator(), NewIndexEntryArray );
 
         std::size_t j = 0;
-        if ( PO_IndexEntriesUsed != 0 ) {
-            std::size_t i = ( PO_NextIndexEntry - PO_IndexEntriesUsed ) & SizeMask;
+        if ( PO_IndexEntriesUsed() != 0 ) {
+            std::size_t i = ( PO_NextIndexEntry() - PO_IndexEntriesUsed() ) & SizeMask;
             do {
                 NewEntries[ j++ ] = PO_PrevEntries[ i ];
                 i                 = ( i + 1 ) & SizeMask;
-            } while ( i != PO_NextIndexEntry );
+            } while ( i != PO_NextIndexEntry() );
         }
 
-        NewIndexEntryArray->Size    = PO_IndexEntriesSize;
+        NewIndexEntryArray->Size    = PO_IndexEntriesSize();
         NewIndexEntryArray->Entries = NewEntries;
         NewIndexEntryArray->Tail.store( FilledSlot - 1, std::memory_order_relaxed );
         NewIndexEntryArray->Prev = CurrentIndexEntryArray.load( std::memory_order_relaxed );
 
-        PO_NextIndexEntry = j;
+        PO_NextIndexEntry() = j;
         PO_PrevEntries    = NewEntries;
         CurrentIndexEntryArray.store( NewIndexEntryArray, std::memory_order_release );
         return true;
@@ -434,16 +435,37 @@ private:
     // Block Manager
     BlockManagerType& BlockManager{};
 
-    // Allocator
-    // TODO: compress those allocators
-    IndexEntryAllocatorType      IndexEntryAllocator{};
-    IndexEntryArrayAllocatorType IndexEntryArrayAllocator{};
-    ValueAllocatorType           ValueAllocator{};
+    // compress those allocators
+    // IndexEntryAllocatorType      IndexEntryAllocator{};
+    // IndexEntryArrayAllocatorType IndexEntryArrayAllocator{};
+    // ValueAllocatorType           ValueAllocator{};
+    //
+    // // used by producer only
+    // std::size_t PO_IndexEntriesUsed{ 0 };
+    // std::size_t PO_IndexEntriesSize{ 0 };
+    // std::size_t PO_NextIndexEntry{ 0 };
 
-    // used by producer only
-    std::size_t PO_IndexEntriesUsed{ 0 };
-    std::size_t PO_IndexEntriesSize{ 0 };
-    std::size_t PO_NextIndexEntry{ 0 };
+
+    CompressPair<std::size_t, IndexEntryAllocatorType>      IndexEntryAllocatorPair{};
+    CompressPair<std::size_t, IndexEntryArrayAllocatorType> IndexEntryArrayAllocatorPair{};
+    CompressPair<std::size_t, ValueAllocatorType>           ValueAllocatorPair{};
+
+    constexpr IndexEntryAllocatorType&      IndexEntryAllocator() noexcept { return IndexEntryAllocatorPair.Second(); }
+    constexpr IndexEntryArrayAllocatorType& IndexEntryArrayAllocator() noexcept { return IndexEntryArrayAllocatorPair.Second(); }
+    constexpr ValueAllocatorType&           ValueAllocator() noexcept { return ValueAllocatorPair.Second(); }
+
+    constexpr const IndexEntryAllocatorType&      IndexEntryAllocator() const noexcept { return IndexEntryAllocatorPair.Second(); }
+    constexpr const IndexEntryArrayAllocatorType& IndexEntryArrayAllocator() const noexcept { return IndexEntryArrayAllocatorPair.Second(); }
+    constexpr const ValueAllocatorType&           ValueAllocator() const noexcept { return ValueAllocatorPair.Second(); }
+
+    constexpr std::size_t& PO_IndexEntriesUsed() noexcept { return IndexEntryAllocatorPair.First(); }
+    constexpr std::size_t& PO_IndexEntriesSize() noexcept { return IndexEntryArrayAllocatorPair.First(); }
+    constexpr std::size_t& PO_NextIndexEntry() noexcept { return ValueAllocatorPair.First(); }
+
+    [[nodiscard]] constexpr const std::size_t& PO_IndexEntriesUsed() const noexcept { return IndexEntryAllocatorPair.First(); }
+    [[nodiscard]] constexpr const std::size_t& PO_IndexEntriesSize() const noexcept { return IndexEntryArrayAllocatorPair.First(); }
+    [[nodiscard]] constexpr const std::size_t& PO_NextIndexEntry() const noexcept { return ValueAllocatorPair.First(); }
+
     IndexEntry* PO_PrevEntries{ nullptr };
 };
 

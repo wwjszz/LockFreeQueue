@@ -12,11 +12,17 @@ using namespace hakle;
 // 使用的 block size
 constexpr std::size_t kBlockSize = 64;
 
-// 定义测试队列类型
-using TestFlagsQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleFlagsBlock<int, kBlockSize>>>>;
-using TestCounterQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>>>;
-
 constexpr std::size_t POOL_SIZE = 100;
+using TestFlagsBlock = HakleFlagsBlock<int, kBlockSize>;
+using TestCounterBlock = HakleCounterBlock<int, kBlockSize>;
+using TestCounterAllocator = HakleAllocator<TestCounterBlock>;
+using TestCounterBlockManager = HakleBlockManager<TestCounterBlock, TestCounterAllocator>;
+using TestFlagsAllocator = HakleAllocator<TestFlagsBlock>;
+using TestFlagsBlockManager = HakleBlockManager<TestFlagsBlock, TestFlagsAllocator>;
+
+// 定义测试队列类型
+using TestFlagsQueue = ExplicitQueue<TestFlagsBlock, TestFlagsBlockManager>;
+using TestCounterQueue = ExplicitQueue<TestCounterBlock, TestCounterBlockManager>;
 
 // 辅助：等待一段时间让操作完成
 void SleepFor(std::int64_t ms) {
@@ -25,7 +31,7 @@ void SleepFor(std::int64_t ms) {
 
 // === 测试 1: 基本 Enqueue/Dequeue ===
 TEST(ConcurrentQueueTest, BasicEnqueueDequeue) {
-    HakleBlockManager<HakleAllocator<HakleFlagsBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestFlagsBlockManager blockManager(POOL_SIZE);
     TestFlagsQueue queue(10, blockManager);
     using AllocMode = TestFlagsQueue::AllocMode;
 
@@ -45,7 +51,7 @@ TEST(ConcurrentQueueTest, BasicEnqueueDequeue) {
 
 // === 测试 2: 队列大小 ===
 TEST(ConcurrentQueueTest, Size) {
-    HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestCounterBlockManager blockManager(POOL_SIZE);
     TestCounterQueue queue(5, blockManager);
     using AllocMode = TestCounterQueue::AllocMode;
     EXPECT_EQ(queue.Size(), 0);
@@ -63,7 +69,7 @@ TEST(ConcurrentQueueTest, Size) {
 
 // === 测试 3: 单生产者多消费者线程安全 ===
 TEST(ConcurrentQueueTest, SingleProducerMultipleConsumer) {
-    HakleBlockManager<HakleAllocator<HakleFlagsBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestFlagsBlockManager blockManager(POOL_SIZE);
     TestFlagsQueue queue(100, blockManager);
     using AllocMode = TestFlagsQueue::AllocMode;
     const int num_items = 1000;
@@ -119,11 +125,12 @@ struct ThrowingType {
     ThrowingType(const ThrowingType&) = default;
     ThrowingType& operator=(const ThrowingType&) = default;
 };
-
-using ThrowingQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleFlagsBlock<ThrowingType, kBlockSize>>>>;
+using ThrowingBlock = HakleFlagsBlock<ThrowingType, kBlockSize>;
+using ThrowingBlockManager = HakleBlockManager<ThrowingBlock>;
+using ThrowingQueue = ExplicitQueue<ThrowingBlock>;
 
 TEST(ConcurrentQueueTest, ExceptionSafety) {
-    HakleBlockManager<HakleAllocator<HakleFlagsBlock<ThrowingType, kBlockSize>>> blockManager(POOL_SIZE);
+    ThrowingBlockManager blockManager(POOL_SIZE);
     ThrowingQueue queue(10, blockManager);
     using AllocMode = ThrowingQueue::AllocMode;
 
@@ -148,8 +155,7 @@ TEST(ConcurrentQueueTest, ExceptionSafety) {
 
 // === 测试 5: 使用 CounterCheckPolicy 的行为一致性 ===
 TEST(ConcurrentQueueTest, CounterPolicyBasic) {
-    using TestCounterQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>>>;
-    HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestCounterBlockManager blockManager(POOL_SIZE);
     TestCounterQueue queue(10, blockManager);
     using AllocMode = TestCounterQueue::AllocMode;
 
@@ -162,8 +168,7 @@ TEST(ConcurrentQueueTest, CounterPolicyBasic) {
 
 // === 测试 6: 大量数据压测 ===
 TEST(ConcurrentQueueTest, HighVolumeStressTest) {
-    using TestCounterQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>>>;
-    HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestCounterBlockManager blockManager(POOL_SIZE);
     TestCounterQueue queue(100, blockManager);
     using AllocMode = TestCounterQueue::AllocMode;
     const int N = 10000;
@@ -196,13 +201,12 @@ TEST(ConcurrentQueueTest, HighVolumeStressTest) {
 
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
 TEST(ConcurrentQueueTest, MultiConsumerStressTest) {
-    using TestCounterQueue = ExplicitQueue<HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>>>;
-    HakleBlockManager<HakleAllocator<HakleCounterBlock<int, kBlockSize>>> blockManager(POOL_SIZE);
+    TestCounterBlockManager blockManager(POOL_SIZE);
     TestCounterQueue queue(100, blockManager);
     using AllocMode = TestCounterQueue::AllocMode;
 
-    const unsigned long long N = 100000;           // 每个数从 0 到 N-1
-    const int NUM_CONSUMERS = 38;   // 3 个消费者
+    const unsigned long long N = 800000;           // 每个数从 0 到 N-1
+    const int NUM_CONSUMERS = 68;   // 3 个消费者
     std::atomic<unsigned long long> total_sum{0}; // 所有消费者结果累加
     std::vector<std::thread> consumers;
     std::atomic<int> count{0};
@@ -219,7 +223,7 @@ TEST(ConcurrentQueueTest, MultiConsumerStressTest) {
     // 创建多个消费者
     for (int c = 0; c < NUM_CONSUMERS; ++c) {
         consumers.emplace_back([&queue, N, &total_sum, &count]() {
-            int local_sum = 0;
+            unsigned long long local_sum = 0;
             int value;
 
             // 每个消费者一直取，直到取到 N 个元素为止
