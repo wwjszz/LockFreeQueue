@@ -46,3 +46,6 @@
 # CMake
 build
 .cache
+
+# thirdparty
+thirdparty/googletest
