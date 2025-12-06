@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+#set(CMAKE_CXX_FLAGS_RELEASE "-g -O0")
+
 include(FetchContent)
 
 # Set the download directory to the project's source thirdparty/googletest
@@ -78,8 +82,12 @@ target_link_libraries(freelisttest PRIVATE gtest_main)
 add_executable(blockpooltest tests/blockpooltest.cpp)
 target_link_libraries(blockpooltest PRIVATE gtest_main)
 
+add_executable(explicitqueuetest tests/explicitqueuetest.cpp)
+target_link_libraries(explicitqueuetest PRIVATE gtest_main)
+
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
 add_test(NAME hashtabletest COMMAND hashtabletest)
 add_test(NAME freelisttest COMMAND freelisttest)
 add_test(NAME blockpooltest COMMAND blockpooltest)
+add_test(NAME explicitqueuetest COMMAND explicitqueuetest)

@@ -1,30 +1,29 @@
 //
 // Created by admin on 25-11-25.
 //
+#include "../ConcurrentQueue/BlockPool.h"
+#include <atomic>
 #include <gtest/gtest.h>
+#include <iostream>
 #include <thread>
 #include <vector>
-#include <atomic>
-#include <iostream>
-#include "../ConcurrentQueue/BlockPool.h"
 
 using namespace hakle;
 
-// 测试节点类型
+// 测试节点类型：继承 FreeListNode，HasOwner 默认为 false
 struct TestNode : public FreeListNode<TestNode> {
-    int value;
-    std::atomic<bool> in_use{false};
+    int               value;
+    std::atomic<bool> in_use{ false };
 
-    TestNode(int v = 0) : value(v) {}
+    explicit TestNode( int v = 0 ) : value( v ) {}
 };
 
 class FreeListTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        list = new FreeList<TestNode>();
-    }
+    void SetUp() override { list = new FreeList<TestNode>(); }
 
     void TearDown() override {
+        // FreeList 析构时会自动 delete 所有 HasOwner==false 的节点
         delete list;
     }
 
@@ -32,284 +31,240 @@ protected:
 };
 
 // 测试基本添加和获取
-TEST_F(FreeListTest, BasicAddAndGet) {
-    TestNode node1(42);
-    TestNode node2(100);
+TEST_F( FreeListTest, BasicAddAndGet ) {
+    auto* node1 = new TestNode( 42 );
+    auto* node2 = new TestNode( 100 );
 
-    // 添加节点到空闲列表
-    list->Add(&node1);
-    list->Add(&node2);
+    list->Add( node1 );
+    list->Add( node2 );
 
-    // 获取节点
     TestNode* retrieved1 = list->TryGet();
-    ASSERT_NE(retrieved1, nullptr);
+    ASSERT_NE( retrieved1, nullptr );
 
     TestNode* retrieved2 = list->TryGet();
-    ASSERT_NE(retrieved2, nullptr);
+    ASSERT_NE( retrieved2, nullptr );
 
-    // 验证获取的节点是之前添加的（顺序可能不同）
-    EXPECT_TRUE((retrieved1 == &node1 && retrieved2 == &node2) ||
-                (retrieved1 == &node2 && retrieved2 == &node1));
+    EXPECT_TRUE( ( retrieved1 == node1 && retrieved2 == node2 ) || ( retrieved1 == node2 && retrieved2 == node1 ) );
 
-    // 列表应该为空
     TestNode* should_be_null = list->TryGet();
-    EXPECT_EQ(should_be_null, nullptr);
+    EXPECT_EQ( should_be_null, nullptr );
 }
 
-// 测试重复添加同一个节点
-TEST_F(FreeListTest, DuplicateAdd) {
-    TestNode node(42);
+// 测试重复添加同一个节点（应被忽略）
+TEST_F( FreeListTest, DuplicateAdd ) {
+    auto* node = new TestNode( 42 );
+    list->Add( node );
+    list->Add( node );  // 第二次添加应被忽略
 
-    // 多次添加同一个节点
-    list->Add(&node);
-    list->Add(&node); // 应该被忽略
-
-    // 只能获取一次
     TestNode* retrieved1 = list->TryGet();
-    ASSERT_NE(retrieved1, nullptr);
-    EXPECT_EQ(retrieved1, &node);
+    ASSERT_NE( retrieved1, nullptr );
+    EXPECT_EQ( retrieved1, node );
 
     TestNode* retrieved2 = list->TryGet();
-    EXPECT_EQ(retrieved2, nullptr);
+    EXPECT_EQ( retrieved2, nullptr );
 }
 
-// 测试获取空列表
-TEST_F(FreeListTest, GetFromEmptyList) {
+// 测试从空列表获取
+TEST_F( FreeListTest, GetFromEmptyList ) {
     TestNode* result = list->TryGet();
-    EXPECT_EQ(result, nullptr);
+    EXPECT_EQ( result, nullptr );
 }
-
-// // 测试引用计数逻辑
-// TEST_F(FreeListTest, ReferenceCounting) {
-//     TestNode node(42);
-//
-//     // 初始引用计数应为0
-//     EXPECT_EQ(node.Refs.load() & list->RefsMask, 0);
-//
-//     // 添加节点
-//     list->Add(&node);
-//
-//     // 添加后引用计数应该有AddFlag
-//     EXPECT_TRUE(node.Refs.load() & list->AddFlag);
-//
-//     // 获取节点
-//     TestNode* retrieved = list->TryGet();
-//     ASSERT_EQ(retrieved, &node);
-//
-//     // 获取后引用计数应该清除AddFlag
-//     EXPECT_EQ(node.Refs.load() & list->AddFlag, 0);
-// }
 
 // 测试节点重用
-TEST_F(FreeListTest, NodeReuse) {
-    TestNode node(42);
+TEST_F( FreeListTest, NodeReuse ) {
+    auto* node = new TestNode( 42 );
 
-    // 添加->获取->再添加->再获取
-    list->Add(&node);
-
+    list->Add( node );
     TestNode* first_get = list->TryGet();
-    ASSERT_EQ(first_get, &node);
+    ASSERT_EQ( first_get, node );
 
-    // 再次添加
-    list->Add(&node);
-
+    list->Add( node );  // 重新加入
     TestNode* second_get = list->TryGet();
-    ASSERT_EQ(second_get, &node);
+    ASSERT_EQ( second_get, node );
 }
 
 // 单线程压力测试
-TEST_F(FreeListTest, SingleThreadStressTest) {
-    const int NUM_NODES = 1000;
-    std::vector<TestNode> nodes(NUM_NODES);
+TEST_F( FreeListTest, SingleThreadStressTest ) {
+    const int              NUM_NODES = 1000;
+    std::vector<TestNode*> nodes;
+    nodes.reserve( NUM_NODES );
 
-    // 添加所有节点
-    for (int i = 0; i < NUM_NODES; ++i) {
-        nodes[i].value = i;
-        list->Add(&nodes[i]);
+    for ( int i = 0; i < NUM_NODES; ++i ) {
+        nodes.push_back( new TestNode( i ) );
+        list->Add( nodes[ i ] );
     }
 
-    // 获取所有节点
     std::vector<TestNode*> retrieved;
-    for (int i = 0; i < NUM_NODES; ++i) {
+    for ( int i = 0; i < NUM_NODES; ++i ) {
         TestNode* node = list->TryGet();
-        ASSERT_NE(node, nullptr);
-        retrieved.push_back(node);
+        ASSERT_NE( node, nullptr );
+        retrieved.push_back( node );
     }
 
-    // 验证获取了所有节点
-    EXPECT_EQ(retrieved.size(), NUM_NODES);
-
-    // 应该没有更多节点
-    TestNode* should_be_null = list->TryGet();
-    EXPECT_EQ(should_be_null, nullptr);
+    EXPECT_EQ( retrieved.size(), NUM_NODES );
+    EXPECT_EQ( list->TryGet(), nullptr );
 }
 
-// 多线程添加测试
-TEST_F(FreeListTest, ConcurrentAdd) {
-    const int NUM_THREADS = 4;
+// 多线程并发添加
+TEST_F( FreeListTest, ConcurrentAdd ) {
+    const int NUM_THREADS      = 4;
     const int NODES_PER_THREAD = 100;
-    const int TOTAL_NODES = NUM_THREADS * NODES_PER_THREAD;
+    const int TOTAL_NODES      = NUM_THREADS * NODES_PER_THREAD;
 
-    std::vector<TestNode> nodes(TOTAL_NODES);
+    std::vector<TestNode*> nodes;
+    nodes.reserve( TOTAL_NODES );
+    for ( int i = 0; i < TOTAL_NODES; ++i ) {
+        nodes.push_back( new TestNode( i ) );
+    }
+
     std::vector<std::thread> threads;
-    std::atomic<int> add_count{0};
+    std::atomic<int>         add_count{ 0 };
 
-    for (int i = 0; i < TOTAL_NODES; ++i) {
-        nodes[i].value = i;
-    }
-
-    // 多个线程同时添加节点
-    for (int t = 0; t < NUM_THREADS; ++t) {
-        threads.emplace_back([this, t, &nodes, &add_count]() {
-            for (int i = 0; i < NODES_PER_THREAD; ++i) {
-                int index = t * NODES_PER_THREAD + i;
-                list->Add(&nodes[index]);
-                add_count.fetch_add(1, std::memory_order_relaxed);
+    for ( int t = 0; t < NUM_THREADS; ++t ) {
+        threads.emplace_back( [ this, t, &nodes, &add_count, NODES_PER_THREAD ]() {
+            for ( int i = 0; i < NODES_PER_THREAD; ++i ) {
+                int idx = t * NODES_PER_THREAD + i;
+                list->Add( nodes[ idx ] );
+                add_count.fetch_add( 1, std::memory_order_relaxed );
             }
-        });
+        } );
     }
 
-    for (auto& thread : threads) {
-        thread.join();
-    }
+    for ( auto& th : threads )
+        th.join();
 
-    EXPECT_EQ(add_count.load(), TOTAL_NODES);
+    EXPECT_EQ( add_count.load(), TOTAL_NODES );
 
-    // 验证所有节点都在列表中
     int get_count = 0;
-    while (list->TryGet() != nullptr) {
+    while ( list->TryGet() != nullptr ) {
         get_count++;
     }
-
-    EXPECT_EQ(get_count, TOTAL_NODES);
+    EXPECT_EQ( get_count, TOTAL_NODES );
 }
 
-// 多线程同时添加和获取测试
-TEST_F(FreeListTest, ConcurrentAddAndGet) {
-    const int NUM_THREADS = 4;
-    const int OPERATIONS_PER_THREAD = 500;
+// 多线程同时添加和获取（生产者-消费者模型）
+TEST_F( FreeListTest, ConcurrentAddAndGet ) {
+    const int NUM_PRODUCERS      = 2;
+    const int NUM_CONSUMERS      = 2;
+    const int NODES_PER_PRODUCER = 500;
 
-    std::vector<TestNode> nodes(OPERATIONS_PER_THREAD * 2);
+    std::vector<TestNode*> initial_nodes;
+    initial_nodes.reserve( NUM_PRODUCERS * NODES_PER_PRODUCER );
+    for ( int i = 0; i < NUM_PRODUCERS * NODES_PER_PRODUCER; ++i ) {
+        initial_nodes.push_back( new TestNode( i ) );
+    }
+
     std::vector<std::thread> threads;
-    std::atomic<int> add_count{0};
-    std::atomic<int> get_count{0};
-    std::atomic<bool> stop{false};
+    std::atomic<int>         produced{ 0 };
+    std::atomic<int>         consumed{ 0 };
+    std::atomic<bool>        stop{ false };
 
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        nodes[i].value = static_cast<int>(i);
-    }
-
-    // 生产者线程：添加节点
-    for (int t = 0; t < NUM_THREADS / 2; ++t) {
-        threads.emplace_back([this, t, &nodes, &add_count]() {
-            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                int index = t * OPERATIONS_PER_THREAD + i;
-                if (index < nodes.size()) {
-                    list->Add(&nodes[index]);
-                    add_count.fetch_add(1, std::memory_order_relaxed);
-                }
+    // 生产者线程
+    for ( int t = 0; t < NUM_PRODUCERS; ++t ) {
+        threads.emplace_back( [ this, t, &initial_nodes, &produced, NODES_PER_PRODUCER ]() {
+            for ( int i = 0; i < NODES_PER_PRODUCER; ++i ) {
+                int idx = t * NODES_PER_PRODUCER + i;
+                list->Add( initial_nodes[ idx ] );
+                produced.fetch_add( 1, std::memory_order_relaxed );
             }
-        });
+        } );
     }
 
-    // 消费者线程：获取节点
-    for (int t = 0; t < NUM_THREADS / 2; ++t) {
-        threads.emplace_back([this, &get_count, &stop]() {
-            while (!stop.load(std::memory_order_acquire)) {
+    // 消费者线程
+    for ( int t = 0; t < NUM_CONSUMERS; ++t ) {
+        threads.emplace_back( [ this, &consumed, &stop ]() {
+            while ( !stop.load( std::memory_order_acquire ) ) {
                 TestNode* node = list->TryGet();
-                if (node != nullptr) {
-                    get_count.fetch_add(1, std::memory_order_relaxed);
-                    // 模拟使用节点
-                    std::this_thread::sleep_for(std::chrono::microseconds(1));
-                    // 重新添加节点以便重用
-                    list->Add(node);
-                } else {
+                if ( node != nullptr ) {
+                    consumed.fetch_add( 1, std::memory_order_relaxed );
+                    // 模拟使用
+                    std::this_thread::sleep_for( std::chrono::microseconds( 1 ) );
+                    // 重新放回供其他线程使用
+                    list->Add( node );
+                }
+                else {
                     std::this_thread::yield();
                 }
             }
-        });
+        } );
     }
 
-    // 运行一段时间
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    stop.store(true, std::memory_order_release);
+    std::this_thread::sleep_for( std::chrono::seconds( 2 ) );
+    stop.store( true, std::memory_order_release );
 
-    for (auto& thread : threads) {
-        thread.join();
-    }
+    for ( auto& th : threads )
+        th.join();
 
-    std::cout << "Concurrent test: " << add_count.load() << " adds, "
-              << get_count.load() << " gets" << std::endl;
+    std::cout << "Concurrent test: " << produced.load() << " produced, " << consumed.load() << " consumed (with reuse)" << std::endl;
 
-    EXPECT_GT(add_count.load(), 0);
-    EXPECT_GT(get_count.load(), 0);
+    EXPECT_GT( produced.load(), 0 );
+    EXPECT_GT( consumed.load(), 0 );
 }
 
-// 测试内存序的正确性（通过TSAN检测）
-TEST_F(FreeListTest, MemoryOrderSanity) {
-    TestNode node1(1), node2(2), node3(3);
+// 内存序基本正确性测试
+TEST_F( FreeListTest, MemoryOrderSanity ) {
+    auto* n1 = new TestNode( 1 );
+    auto* n2 = new TestNode( 2 );
+    auto* n3 = new TestNode( 3 );
 
-    // 基本操作序列
-    list->Add(&node1);
-    list->Add(&node2);
+    list->Add( n1 );
+    list->Add( n2 );
 
-    TestNode* n1 = list->TryGet();
-    TestNode* n2 = list->TryGet();
+    auto* r1 = list->TryGet();
+    auto* r2 = list->TryGet();
+    ASSERT_NE( r1, nullptr );
+    ASSERT_NE( r2, nullptr );
 
-    EXPECT_TRUE(n1 != nullptr && n2 != nullptr);
+    list->Add( r1 );
+    list->Add( r2 );
+    list->Add( n3 );
 
-    // 重用节点
-    list->Add(n1);
-    list->Add(n2);
-    list->Add(&node3);
+    auto* r3 = list->TryGet();
+    auto* r4 = list->TryGet();
+    auto* r5 = list->TryGet();
 
-    // 再次获取
-    TestNode* n3 = list->TryGet();
-    TestNode* n4 = list->TryGet();
-    TestNode* n5 = list->TryGet();
-
-    EXPECT_TRUE(n3 != nullptr && n4 != nullptr && n5 != nullptr);
+    EXPECT_NE( r3, nullptr );
+    EXPECT_NE( r4, nullptr );
+    EXPECT_NE( r5, nullptr );
 }
 
-// 测试边界情况：大量节点
-TEST_F(FreeListTest, LargeNumberOfNodes) {
-    const int LARGE_NUMBER = 10000;
-    std::vector<TestNode> nodes(LARGE_NUMBER);
-
-    for (int i = 0; i < LARGE_NUMBER; ++i) {
-        nodes[i].value = i;
-        list->Add(&nodes[i]);
+// 大量节点测试
+TEST_F( FreeListTest, LargeNumberOfNodes ) {
+    const int              LARGE_NUMBER = 10000;
+    std::vector<TestNode*> nodes;
+    nodes.reserve( LARGE_NUMBER );
+    for ( int i = 0; i < LARGE_NUMBER; ++i ) {
+        nodes.push_back( new TestNode( i ) );
+        list->Add( nodes[ i ] );
     }
 
     int count = 0;
-    while (list->TryGet() != nullptr) {
+    while ( list->TryGet() != nullptr ) {
         count++;
     }
-
-    EXPECT_EQ(count, LARGE_NUMBER);
+    EXPECT_EQ( count, LARGE_NUMBER );
 }
 
-// 测试类型约束
-TEST_F(FreeListTest, TypeConstraints) {
-    // 应该能正常编译（正确继承）
-    struct GoodNode : public FreeListNode<GoodNode> {
+// 类型约束测试（编译期）
+TEST_F( FreeListTest, TypeConstraints ) {
+    struct GoodNode : FreeListNode<GoodNode> {
         int data;
     };
-
+    // 应该能编译通过
     FreeList<GoodNode> good_list;
-    GoodNode good_node;
-    good_list.Add(&good_node);
+    auto*              node = new GoodNode{};
+    good_list.Add( node );
+    delete good_list.TryGet();  // 手动删（因为 HasOwner=false，但这里只测构造）
 
-    // 下面这行应该导致编译错误（取消注释测试）
+    // 下面取消注释会导致编译错误：
     /*
-    struct BadNode {
-        int data;
-    };
-    FreeList<BadNode> bad_list; // 应该static_assert失败
+    struct BadNode { int x; };
+    FreeList<BadNode> bad; // static_assert 失败
     */
 }
 
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
+// 主函数
+int main( int argc, char** argv ) {
+    ::testing::InitGoogleTest( &argc, argv );
     return RUN_ALL_TESTS();
 }

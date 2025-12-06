@@ -421,7 +421,7 @@ private:
         else {
             std::atomic_thread_fence( std::memory_order_acquire );
 
-            if CONSTEXPR_IF (Mode == AllocMode::CanAlloc) {
+            HAKLE_CONSTEXPR_IF (Mode == AllocMode::CanAlloc) {
 
                 if (BlockSize < EXPECTED_BLOCK_SIZE) {
                     BlockSize *= 2;
@@ -446,7 +446,7 @@ private:
                 std::atomic_thread_fence( std::memory_order_release );
                 TailBlock.Store( NewBlock );
             }
-            else if CONSTEXPR_IF (Mode == AllocMode::CannotAlloc) {
+            else HAKLE_CONSTEXPR_IF (Mode == AllocMode::CannotAlloc) {
                 // full and cannot alloc
                 return false;
             }
