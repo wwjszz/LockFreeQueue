@@ -32,6 +32,7 @@ inline std::size_t CeilToPow2( std::size_t X ) noexcept {
 }
 
 // TODO: not noly for 64 bit or 32 bit and optimize it
+// used to calculate log2
 inline constexpr uint8_t BitWidth( std::size_t X ) noexcept {
     uint8_t Count = 0;
     HAKLE_CONSTEXPR_IF( sizeof( std::size_t ) > 4 ) {

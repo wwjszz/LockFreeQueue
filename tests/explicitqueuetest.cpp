@@ -209,12 +209,17 @@ TEST(ConcurrentQueueTest, MultiConsumerStressTest) {
     const int NUM_CONSUMERS = 68;   // 3 个消费者
     std::atomic<unsigned long long> total_sum{0}; // 所有消费者结果累加
     std::vector<std::thread> consumers;
-    std::atomic<int> count{0};
+    std::atomic<unsigned long long> count{0};
+
+    int *a = new int[100]{};
+    for (int i = 0; i < 100; ++i) {
+        a[i] = i;
+    }
 
     // 生产者：生产 0 ~ N-1
-    std::thread producer([&queue, N]() {
+    std::thread producer([&queue, N, a ]() {
         for (int i = 0; i < N; ++i) {
-            while (!queue.Enqueue<AllocMode::CanAlloc>(i)) {
+            while (!queue.EnqueueBulk<AllocMode::CanAlloc>(a, 100)) {
                 printf("enqueue failed\n");
             }
         }
@@ -227,7 +232,7 @@ TEST(ConcurrentQueueTest, MultiConsumerStressTest) {
             int value;
 
             // 每个消费者一直取，直到取到 N 个元素为止
-            while (count < N) {
+            while (count < N * 100) {
                 if (queue.Dequeue(value)) {
                     local_sum += value;
                     ++count;
@@ -246,7 +251,7 @@ TEST(ConcurrentQueueTest, MultiConsumerStressTest) {
     }
 
     // 验证：总和是否正确
-    unsigned long long expected_sum = N * (N - 1) / 2;  // 0+1+2+...+(N-1)
+    unsigned long long expected_sum = 99 * 50 * N;
     EXPECT_EQ(total_sum.load(), expected_sum);
 
     // 验证队列为空

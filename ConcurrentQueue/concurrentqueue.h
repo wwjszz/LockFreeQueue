@@ -10,6 +10,7 @@
 #include "common/common.h"
 #include "common/utility.h"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <type_traits>
@@ -168,7 +169,7 @@ public:
     using typename Base::ValueType;
 
 private:
-    constexpr static std::size_t BlockSizeLog2 = BitWidth( BlockSize );
+    constexpr static std::size_t BlockSizeLog2 = BitWidth( BlockSize ) - 1;
 
     struct IndexEntry;
     struct IndexEntryArray;
@@ -320,6 +321,142 @@ public:
         return true;
     }
 
+    template <AllocMode Mode, class Iterator>
+    constexpr bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
+#define FAILED_STATEMENT                                                              \
+    PO_IndexEntriesUsed() = OriginIndexEntriesUsed;                                   \
+    PO_NextIndexEntry()   = OriginNextIndexEntry;                                     \
+    this->TailBlock       = StartBlock == nullptr ? FirstAllocatedBlock : StartBlock; \
+    return false
+
+        // set start state
+        std::size_t OriginIndexEntriesUsed = PO_IndexEntriesUsed();
+        std::size_t OriginNextIndexEntry   = PO_NextIndexEntry();
+        BlockType*  StartBlock             = (this->TailBlock);
+        std::size_t StartTailIndex         = this->TailIndex.load( std::memory_order_relaxed );
+
+        std::size_t LastTailIndex = StartTailIndex - 1;
+        std::size_t BlockCountNeed =
+            ( ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) ) - ( ( ( LastTailIndex ) & ~( BlockSize - 1 ) ) ) ) >> BlockSizeLog2;
+        // TODO: fix this
+        // std::size_t BlockCountNeed = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 ) - (( StartTailIndex - 1) >> BlockSizeLog2 );
+        std::size_t CurrentTailIndex    = LastTailIndex & ~( BlockSize - 1 );
+        BlockType*  FirstAllocatedBlock = nullptr;
+        if ( BlockCountNeed > 0 ) {
+            while ( BlockCountNeed > 0 && this->TailBlock != nullptr && this->TailBlock->Next->IsEmpty() ) {
+                // we can re-use that block
+                --BlockCountNeed;
+                CurrentTailIndex += BlockSize;
+                this->TailBlock = this->TailBlock->Next;
+                FirstAllocatedBlock = FirstAllocatedBlock == nullptr ? this->TailBlock : FirstAllocatedBlock;
+                // this->TailBlock->Reset();
+
+                auto& Entry         = this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Entries[ PO_NextIndexEntry() ];
+                Entry.Base          = CurrentTailIndex;
+                Entry.InnerBlock    = this->TailBlock;
+                PO_NextIndexEntry() = ( PO_NextIndexEntry() + 1 ) & ( PO_IndexEntriesSize() - 1 );
+            }
+
+            while ( BlockCountNeed > 0 ) {
+                // we must get a new block
+                CurrentTailIndex += BlockSize;
+                --BlockCountNeed;
+                // TODO: add a overflow check and MAX_SIZE check
+                if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
+                    // need to create a new index entry array
+                    HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) {
+                        FAILED_STATEMENT;
+                        return false;
+                    }
+                    else if ( !CreateNewBlockIndexArray( OriginIndexEntriesUsed ) ) {
+                        FAILED_STATEMENT;
+                        return false;
+                    }
+
+                    // HACK:
+                    OriginNextIndexEntry = OriginIndexEntriesUsed;
+                }
+
+                BlockType* NewBlock = BlockManager.RequisitionBlock( Mode );
+                if ( NewBlock == nullptr ) {
+                    FAILED_STATEMENT;
+                    return false;
+                }
+
+                NewBlock->Reset();
+                if ( this->TailBlock == nullptr ) {
+                    NewBlock->Next = NewBlock;
+                }
+                else {
+                    NewBlock->Next        = this->TailBlock->Next;
+                    this->TailBlock->Next = NewBlock;
+                }
+                this->TailBlock     = NewBlock;
+                FirstAllocatedBlock = FirstAllocatedBlock == nullptr ? this->TailBlock : FirstAllocatedBlock;
+                // get a new block
+                ++PO_IndexEntriesUsed();
+
+                auto& Entry         = this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Entries[ PO_NextIndexEntry() ];
+                Entry.Base          = CurrentTailIndex;
+                Entry.InnerBlock    = this->TailBlock;
+                PO_NextIndexEntry() = ( PO_NextIndexEntry() + 1 ) & ( PO_IndexEntriesSize() - 1 );
+            }
+        }
+
+        // we already have enough blocks, let's fill them
+        std::size_t StartInnerIndex = StartTailIndex & ( BlockSize - 1 );
+        BlockType *CurrentBlock = (StartInnerIndex == 0 && FirstAllocatedBlock != nullptr) ? FirstAllocatedBlock : StartBlock ;
+        while ( true ) {
+            std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock ) ? ( StartTailIndex + Count - 1 ) & ( BlockSize - 1 ) : (BlockSize - 1);
+            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
+                while ( StartInnerIndex <= EndInnerIndex ) {
+                    // printf( "StartInnerIndex: %lu, EndInnerIndex: %lu, value: %d\n", StartInnerIndex, EndInnerIndex, *ItemFirst );
+                    ValueAllocatorTraits::Construct( ValueAllocator(), ( *CurrentBlock  )[ StartInnerIndex ], *ItemFirst++ );
+                    ++StartInnerIndex;
+                }
+            }
+            else {
+                HAKLE_TRY {
+                    while ( StartInnerIndex != EndInnerIndex ) {
+                        ValueAllocatorTraits::Construct( ValueAllocator(), ( *( CurrentBlock ) )[ StartInnerIndex ], *ItemFirst++ );
+                        ++StartInnerIndex;
+                    }
+                }
+                HAKLE_CATCH( ... ) {
+                    FAILED_STATEMENT;
+                    HAKLE_CONSTEXPR_IF( !std::is_trivially_destructible<ValueType>::value ) {
+                        BlockType*  StartBlock2      = StartBlock;
+                        std::size_t StartInnerIndex2 = StartTailIndex & ( BlockSize - 1 );
+                        while ( true ) {
+                            std::size_t EndInnerIndex2 = ( StartBlock2 == CurrentBlock ) ? ( StartInnerIndex & ( BlockSize - 1 ) ) : BlockSize;
+                            while ( StartInnerIndex2 != EndInnerIndex2 ) {
+                                ValueAllocatorTraits::Destroy( ValueAllocator(), ( *( StartBlock2 ) )[ StartInnerIndex2 ] );
+                                ++StartInnerIndex2;
+                            }
+                            if ( StartBlock2 == CurrentBlock ) {
+                                break;
+                            }
+                            StartBlock2      = StartBlock2->Next;
+                            StartInnerIndex2 = 0;
+                        }
+                    }
+                    HAKLE_RETHROW;
+                }
+            }
+            if ( CurrentBlock == this->TailBlock ) {
+                break;
+            }
+            StartInnerIndex = 0;
+            CurrentBlock    = CurrentBlock->Next;
+        }
+
+        this->CurrentIndexEntryArray.load( std::memory_order_relaxed )
+            ->Tail.store( ( PO_NextIndexEntry() - 1 ) & ( PO_IndexEntriesSize() - 1 ), std::memory_order_release );
+        this->TailIndex.store( StartTailIndex + Count, std::memory_order_release );
+        return true;
+#undef GO_TO_FAILED
+    }
+
     // Dequeue
     template <class U>
         requires std::is_assignable_v<U&, ValueType&&>
@@ -342,7 +479,7 @@ public:
 
                 std::size_t IndexEntryTailBase  = LocalIndexEntryArray->Entries[ LocalIndexEntryIndex ].Base;
                 std::size_t FirstBlockIndexBase = Index & ~( BlockSize - 1 );
-                std::size_t Offset              = ( FirstBlockIndexBase - IndexEntryTailBase ) >> ( BlockSizeLog2 - 1 );
+                std::size_t Offset              = ( FirstBlockIndexBase - IndexEntryTailBase ) >> BlockSizeLog2;
                 BlockType*  DequeueBlock =
                     LocalIndexEntryArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntryArray->Size - 1 ) ].InnerBlock;
 
