@@ -3,6 +3,7 @@
 //
 
 #include <atomic>
+#include <chrono>
 #include <random>
 #include <thread>
 #include <vector>
@@ -58,7 +59,7 @@ TEST_F( LinearSearchMapTest, ConcurrentSetDifferentKeys ) {
     std::vector<std::thread> threads;
 
     for ( int t = 0; t < NUM_THREADS; ++t ) {
-        threads.emplace_back( [ this, t ]() {
+        threads.emplace_back( [ ITEMS_PER_THREAD, this, t ]() {
             int base = t * ITEMS_PER_THREAD + 1;
             for ( int i = 0; i < ITEMS_PER_THREAD; ++i ) {
                 int key   = base + i;
@@ -91,7 +92,7 @@ TEST_F( LinearSearchMapTest, ConcurrentSetSameKey ) {
     std::vector<std::thread> threads;
 
     for ( int t = 0; t < NUM_THREADS; ++t ) {
-        threads.emplace_back( [ this, t, &successCount ]() {
+        threads.emplace_back( [ KEY, this, t, &successCount ]() {
             int value = ( t + 1 ) * 100;
             map.SetItem( KEY, value );
             successCount++;
@@ -129,7 +130,7 @@ TEST_F( LinearSearchMapTest, ConcurrentSetAndGet ) {
 
     // Writer threads
     for ( int t = 0; t < NUM_WRITER_THREADS; ++t ) {
-        threads.emplace_back( [ this, t, &startFlag ]() {
+        threads.emplace_back( [ ITEMS_PER_WRITER, this, t, &startFlag ]() {
             while ( !startFlag.load() ) {
                 std::this_thread::yield();
             }
@@ -145,7 +146,7 @@ TEST_F( LinearSearchMapTest, ConcurrentSetAndGet ) {
 
     // Reader threads
     for ( int t = 0; t < NUM_READER_THREADS; ++t ) {
-        threads.emplace_back( [ this, &startFlag ]() {
+        threads.emplace_back( [ ITEMS_PER_WRITER, NUM_WRITER_THREADS, this, &startFlag ]() {
             while ( !startFlag.load() ) {
                 std::this_thread::yield();
             }
@@ -191,7 +192,7 @@ TEST_F( LinearSearchMapTest, StressTest_ThreadSafe ) {
     std::atomic<int>         errorCount{ 0 };
 
     for ( int t = 0; t < NUM_THREADS; ++t ) {
-        threads.emplace_back( [ this, t, &errorCount, &legalValues, &legalMutex ]() {
+        threads.emplace_back( [ OPERATIONS_PER_THREAD, KEY_RANGE, this, t, &errorCount, &legalValues, &legalMutex ]() {
             std::mt19937                       rng( t );
             std::uniform_int_distribution<int> keyDist( 1, KEY_RANGE );
 
@@ -248,7 +249,7 @@ TEST_F( LinearSearchMapTest, PerformanceBenchmark ) {
 
     std::vector<std::thread> threads;
     for ( int t = 0; t < NUM_THREADS; ++t ) {
-        threads.emplace_back( [ this, t ]() {
+        threads.emplace_back( [ ITEMS_PER_THREAD, this, t ]() {
             int base = t * ITEMS_PER_THREAD + 1;
 
             // Write

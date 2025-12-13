@@ -79,7 +79,7 @@ TEST( ConcurrentQueueTest, SingleProducerMultipleConsumer ) {
 
     // 启动多个消费者
     for ( int i = 0; i < num_consumers; ++i ) {
-        consumers.emplace_back( [ &queue, &consumed_count ]() {
+        consumers.emplace_back( [ num_items, &queue, &consumed_count ]() {
             int value;
             while ( consumed_count.load() < num_items ) {
                 if ( queue.Dequeue( value ) ) {
@@ -322,7 +322,7 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
             int                value;
 
             // 每个消费者一直取，直到取到 N 个元素为止
-            while ( count < N - (N / 100) ) {
+            while ( count < N - ( N / 100 ) ) {
                 ExceptionTest buffer[ 1 ]{};
                 // std::size_t   random_index = rand() % 100;
                 // printf("random_index: %zu\n", random_index);

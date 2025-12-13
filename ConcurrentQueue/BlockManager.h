@@ -165,10 +165,10 @@ public:
     }
 
 private:
-    constexpr AllocatorType&       Allocator() noexcept { return AllocatorPair.Second(); }
-    constexpr const AllocatorType& Allocator() const noexcept { return AllocatorPair.Second(); }
-    constexpr std::size_t&         Size() noexcept { return AllocatorPair.First(); }
-    [[nodiscard]] constexpr const std::size_t&   Size() const noexcept { return AllocatorPair.First(); }
+    constexpr AllocatorType&                     Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType&               Allocator() const noexcept { return AllocatorPair.Second(); }
+    constexpr std::size_t&                       Size() noexcept { return AllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::size_t& Size() const noexcept { return AllocatorPair.First(); }
 
     // compressed allocator
     CompressPair<std::size_t, AllocatorType> AllocatorPair{};
@@ -208,7 +208,10 @@ template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
 class HakleBlockManager : public BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE> {
 public:
     using BaseManager = BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE>;
-    using typename BaseManager::AllocatorType;
+    // TODO:
+    // using typename BaseManager::AllocatorType;
+    using AllocatorType = typename BaseManager::AllocatorType;
+
     using typename BaseManager::BlockAllocatorTraits;
     using typename BaseManager::BlockTraits;
     using typename BaseManager::BlockType;

@@ -30,7 +30,7 @@ using HakleCounterBlock = HakleBlock<T, BLOCK_SIZE, CounterCheckPolicy<BLOCK_SIZ
 struct BlockCheckPolicy {
     virtual HAKLE_CPP20_CONSTEXPR ~BlockCheckPolicy() = default;
 
-    [[nodiscard]] virtual bool         IsEmpty() const                                      = 0;
+    HAKLE_NODISCARD virtual bool       IsEmpty() const                                      = 0;
     virtual HAKLE_CPP20_CONSTEXPR bool SetEmpty( std::size_t Index )                        = 0;
     virtual HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( std::size_t Index, std::size_t Count ) = 0;
     virtual HAKLE_CPP20_CONSTEXPR void SetAllEmpty()                                        = 0;
@@ -41,7 +41,7 @@ template <std::size_t BLOCK_SIZE>
 struct FlagsCheckPolicy : BlockCheckPolicy {
     HAKLE_CPP20_CONSTEXPR ~FlagsCheckPolicy() override = default;
 
-    [[nodiscard]] HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
+    HAKLE_NODISCARD HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
         for ( auto& Flag : Flags ) {
             if ( !Flag.load( std::memory_order_relaxed ) ) {
                 return false;
@@ -85,7 +85,7 @@ template <std::size_t BLOCK_SIZE>
 struct CounterCheckPolicy : BlockCheckPolicy {
     HAKLE_CPP20_CONSTEXPR ~CounterCheckPolicy() override = default;
 
-    [[nodiscard]] HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
+    HAKLE_NODISCARD HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
         if ( Counter.load( std::memory_order_relaxed ) == BLOCK_SIZE ) {
             std::atomic_thread_fence( std::memory_order_acquire );
             return true;
@@ -94,12 +94,12 @@ struct CounterCheckPolicy : BlockCheckPolicy {
     }
 
     // Increments the counter and returns true if the block is now empty
-    HAKLE_CPP20_CONSTEXPR bool SetEmpty( [[maybe_unused]] std::size_t Index ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetEmpty( HAKLE_MAYBE_UNUSED std::size_t Index ) override {
         std::size_t OldCounter = Counter.fetch_add( 1, std::memory_order_release );
         return OldCounter + 1 == BLOCK_SIZE;
     }
 
-    HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( [[maybe_unused]] std::size_t Index, std::size_t Count ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( HAKLE_MAYBE_UNUSED std::size_t Index, std::size_t Count ) override {
         std::size_t OldCounter = Counter.fetch_add( Count, std::memory_order_release );
         return OldCounter + Count == BLOCK_SIZE;
     }

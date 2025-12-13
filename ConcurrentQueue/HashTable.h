@@ -192,7 +192,7 @@ public:
         return HashTableStatus::ADD_SUCCESS;
     }
 
-    [[nodiscard]] constexpr std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
+    HAKLE_NODISCARD constexpr std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
 
 private:
     struct HashNode {

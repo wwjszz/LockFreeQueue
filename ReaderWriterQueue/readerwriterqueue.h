@@ -70,7 +70,7 @@ public:
         return *this;
     }
 
-    [[nodiscard]] T Load() const noexcept { return Value.load( std::memory_order_relaxed ); }
+    HAKLE_NODISCARD T Load() const noexcept { return Value.load( std::memory_order_relaxed ); }
 
     void Store( const T& Val ) noexcept { Value.store( Val, std::memory_order_relaxed ); }
 
@@ -194,12 +194,12 @@ public:
 
     ReaderWriterQueue& operator=( const ReaderWriterQueue& ) = delete;
 
-    [[nodiscard]] bool TryEnqueue( const T& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( Item ); }
+    HAKLE_NODISCARD bool TryEnqueue( const T& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( Item ); }
 
-    [[nodiscard]] bool TryEnqueue( T&& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( std::move( Item ) ); }
+    HAKLE_NODISCARD bool TryEnqueue( T&& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( std::move( Item ) ); }
 
     template <class... Args>
-    [[nodiscard]] bool TryEmplace( Args&&... Params ) {
+    HAKLE_NODISCARD bool TryEmplace( Args&&... Params ) {
         return InnerEnqueue<AllocMode::CannotAlloc>( std::forward<Args>( Params )... );
     }
 
@@ -213,7 +213,7 @@ public:
     }
 
     template <class U>
-    [[nodiscard]] bool TryDequeue( U& Result ) noexcept {
+    HAKLE_NODISCARD bool TryDequeue( U& Result ) noexcept {
 #ifndef NDEBUG
         QueueGuard DequeueGuard( DequeueStatus );
 #endif
@@ -259,7 +259,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] T* Peek() const noexcept {
+    HAKLE_NODISCARD T* Peek() const noexcept {
 #ifndef NDEBUG
         QueueGuard DequeueGuard( DequeueStatus );
 #endif
@@ -287,7 +287,7 @@ public:
         return nullptr;
     }
 
-    [[nodiscard]] bool Pop() noexcept {
+    HAKLE_NODISCARD bool Pop() noexcept {
 #ifndef NDEBUG
         QueueGuard DequeueGuard( DequeueStatus );
 #endif
@@ -332,7 +332,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] std::size_t SizeApprox() const noexcept {
+    HAKLE_NODISCARD std::size_t SizeApprox() const noexcept {
         std::size_t Size         = 0;
         Block*      FirstBlock   = FrontBlock.Load();
         Block*      CurrentBlock = FirstBlock;
@@ -344,7 +344,7 @@ public:
         return Size;
     }
 
-    [[nodiscard]] std::size_t MaxCapacity() const noexcept {
+    HAKLE_NODISCARD std::size_t MaxCapacity() const noexcept {
         std::size_t Capacity     = 0;
         Block*      FirstBlock   = FrontBlock.Load();
         Block*      CurrentBlock = FirstBlock;
@@ -604,7 +604,7 @@ public:
         }
     }
 
-    [[nodiscard]] std::size_t Available() const noexcept {
+    HAKLE_NODISCARD std::size_t Available() const noexcept {
         const signed_size_t Num = Count.Load();
         return Num > 0 ? static_cast<std::size_t>( Num ) : 0;
     }
@@ -1004,9 +1004,9 @@ public:
         return false;
     }
 
-    [[nodiscard]] std::size_t SizeApprox() const noexcept { return Sem->Available(); }
+    HAKLE_NODISCARD std::size_t SizeApprox() const noexcept { return Sem->Available(); }
 
-    [[nodiscard]] std::size_t MaxCapacity() const noexcept { return Inner.MaxCapacity(); }
+    HAKLE_NODISCARD std::size_t MaxCapacity() const noexcept { return Inner.MaxCapacity(); }
 
 private:
     InnerQueue                            Inner;

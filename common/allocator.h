@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <type_traits>
 
+#include "common/common.h"
 #include "memory.h"
 
 namespace hakle {
@@ -83,7 +84,7 @@ public:
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
 
     static constexpr void Deallocate( Pointer ptr ) noexcept { HAKLE_OPERATOR_DELETE( ptr ); }
-    static constexpr void Deallocate( Pointer ptr, [[maybe_unused]] SizeType n ) noexcept { Deallocate( ptr ); }
+    static constexpr void Deallocate( Pointer ptr, HAKLE_MAYBE_UNUSED SizeType n ) noexcept { Deallocate( ptr ); }
 
     template <class... Args>
     static constexpr void Construct( Pointer ptr, Args&&... args ) {

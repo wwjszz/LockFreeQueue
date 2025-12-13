@@ -193,7 +193,7 @@ TEST_F( HashTableTest, HighConcurrencyInsertDifferentKeys ) {
 
     std::vector<std::thread> threads;
 
-    auto worker = [ this, &add_success, &get_success ]( int thread_id ) {
+    auto worker = [ num_operations, this, &add_success, &get_success ]( int thread_id ) {
         for ( int i = 0; i < num_operations; ++i ) {
             uint32_t key      = thread_id * num_operations + i;
             uint32_t value    = key * 10;
@@ -416,7 +416,7 @@ TEST_F( HashTableTest, StressTest ) {
 
     std::vector<std::thread> threads;
 
-    auto worker = [ this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]( int thread_id ) {
+    auto worker = [ duration_seconds, this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]( int thread_id ) {
         std::random_device              rd;
         std::mt19937                    gen( rd() );
         std::uniform_int_distribution<> op_dis( 0, 100 );
@@ -488,7 +488,7 @@ TEST_F( HashTableTest, GetOrAddByFunc ) {
 
     auto allocateFunc = []( uint32_t value ) -> uint32_t* { return new uint32_t( value ); };
 
-    auto worker = [ &ptrTable, &allocateFunc, &allocated_pointers, &mutex ]( int thread_id ) {
+    auto worker = [ num_operations, &ptrTable, &allocateFunc, &allocated_pointers, &mutex ]( int thread_id ) {
         for ( int i = 0; i < num_operations; ++i ) {
             uint32_t  key      = thread_id * num_operations + i;
             uint32_t* outValue = nullptr;

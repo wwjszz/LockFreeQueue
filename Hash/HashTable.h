@@ -25,7 +25,8 @@ namespace samples {
                 idx &= ( N - 1 );
                 HashTableEntry& Entry = Data[ idx ];
 
-                if ( uint32_t CurrentKey = Entry.Key.Load(); CurrentKey != InKey ) {
+                uint32_t CurrentKey = Entry.Key.Load();
+                if ( CurrentKey != InKey ) {
                     if ( CurrentKey != 0 )
                         continue;
 
@@ -37,7 +38,7 @@ namespace samples {
             }
         }
 
-        [[nodiscard]] int GetItem( uint32_t InKey ) const noexcept {
+        HAKLE_NODISCARD int GetItem( uint32_t InKey ) const noexcept {
             assert( InKey != 0 );
 
             for ( uint32_t idx = IntegerHash( InKey );; ++idx ) {

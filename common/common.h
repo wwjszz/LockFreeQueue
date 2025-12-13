@@ -5,9 +5,6 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#define HAKLE_LIKELY( x ) ( __builtin_expect( !!( x ), 1 ) )
-#define HAKLE_UNLIKELY( x ) ( __builtin_expect( !!( x ), 0 ) )
-
 #ifndef HAKLE_CPP_VERSION
 #if defined( _MSVC_LANG )
 #define HAKLE_CPLUSPLUS _MSVC_LANG
@@ -33,9 +30,13 @@
 #if HAKLE_CPP_VERSION >= 17
 #define HAKLE_CONSTEXPR_IF if constexpr
 #define HAKLE_NOEXCEPT( expr ) noexcept( expr )
+#define HAKLE_NODISCARD [[nodiscard]]
+#define HAKLE_MAYBE_UNUSED [[maybe_unused]]
 #else
 #define HAKLE_CONSTEXPR_IF if
 #define HAKLE_NOEXCEPT( expr ) true
+#define HAKLE_NODISCARD
+#define HAKLE_MAYBE_UNUSED
 #endif
 
 #if HAKLE_CPP_VERSION >= 20
@@ -54,5 +55,13 @@
 #define HAKLE_CATCH( ... ) catch ( __VA_ARGS__ )
 #define HAKLE_THROW( expr ) throw( expr )
 #define HAKLE_RETHROW throw
+
+#ifdef _MSC_VER
+#define HAKLE_LIKELY( x ) ( x )
+#define HAKLE_UNLIKELY( x ) ( x )
+#else
+#define HAKLE_LIKELY( x ) ( __builtin_expect( !!( x ), 1 ) )
+#define HAKLE_UNLIKELY( x ) ( __builtin_expect( !!( x ), 0 ) )
+#endif
 
 #endif  // COMMON_H

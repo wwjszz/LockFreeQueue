@@ -33,13 +33,13 @@ public:
 
     virtual HAKLE_CPP20_CONSTEXPR ~QueueBase() = default;
 
-    [[nodiscard]] constexpr std::size_t Size() const noexcept {
+    HAKLE_NODISCARD constexpr std::size_t Size() const noexcept {
         std::size_t Tail = TailIndex.load( std::memory_order_relaxed );
         std::size_t Head = HeadIndex.load( std::memory_order_relaxed );
         return CircularLessThan( Head, Tail ) ? Tail - Head : 0;
     }
 
-    [[nodiscard]] constexpr std::size_t GetTail() const noexcept { return TailIndex.load( std::memory_order_relaxed ); }
+    HAKLE_NODISCARD constexpr std::size_t GetTail() const noexcept { return TailIndex.load( std::memory_order_relaxed ); }
 
 protected:
     std::atomic<std::size_t> HeadIndex{};
@@ -598,9 +598,9 @@ private:
     constexpr std::size_t& PO_IndexEntriesSize() noexcept { return IndexEntryArrayAllocatorPair.First(); }
     constexpr std::size_t& PO_NextIndexEntry() noexcept { return ValueAllocatorPair.First(); }
 
-    [[nodiscard]] constexpr const std::size_t& PO_IndexEntriesUsed() const noexcept { return IndexEntryAllocatorPair.First(); }
-    [[nodiscard]] constexpr const std::size_t& PO_IndexEntriesSize() const noexcept { return IndexEntryArrayAllocatorPair.First(); }
-    [[nodiscard]] constexpr const std::size_t& PO_NextIndexEntry() const noexcept { return ValueAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::size_t& PO_IndexEntriesUsed() const noexcept { return IndexEntryAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::size_t& PO_IndexEntriesSize() const noexcept { return IndexEntryArrayAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::size_t& PO_NextIndexEntry() const noexcept { return ValueAllocatorPair.First(); }
 
     IndexEntry* PO_PrevEntries{ nullptr };
 };

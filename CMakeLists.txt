@@ -6,9 +6,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-#set(CMAKE_CXX_FLAGS_RELEASE "-g -O0")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    string(APPEND CMAKE_CXX_FLAGS " /W3 /utf-8")
+    # to avoid using the debug runtime library, which is not supported by the static runtime library
+    set(CMAKE_CXX_FLAGS_DEBUG "/MTd /Zi /Ob0 /Od /RTC1")
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " /O2")
+endif()
 
 include(FetchContent)
 

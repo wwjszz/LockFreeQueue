@@ -3,11 +3,10 @@
 //
 #include "ConcurrentQueue/Block.h"
 #include "ConcurrentQueue/BlockManager.h"
-#include "ConcurrentQueue/ConcurrentQueue.h"
 #include "common/allocator.h"
-#include "common/memory.h"
 
 #include <atomic>
+#include <chrono>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <thread>
@@ -144,8 +143,8 @@ TEST_F( BlockPoolTest, ThreadSafety ) {
     for ( auto& ptr : allocated_blocks ) {
         ptr.store( nullptr, std::memory_order_relaxed );
     }
-
-    auto worker = [ & ]( int thread_id ) {
+    using BlockType = HakleFlagsBlock<int, BLOCK_SIZE>;
+    auto worker     = [ & ]( int thread_id ) {
         for ( size_t i = 0; i < BLOCKS_PER_THREAD; ++i ) {
             auto* block = pool.GetBlock();
             if ( block != nullptr ) {
@@ -155,7 +154,7 @@ TEST_F( BlockPoolTest, ThreadSafety ) {
                 // 验证块的唯一性（检查是否重复分配）
                 bool found_slot = false;
                 for ( auto& allocated : allocated_blocks ) {
-                    HakleFlagsBlock<int, BLOCK_SIZE>* expected = nullptr;
+                    BlockType* expected = nullptr;
                     if ( allocated.compare_exchange_strong( expected, block, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
                         found_slot = true;
                         break;

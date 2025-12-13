@@ -20,7 +20,9 @@ namespace samples {
             assert( InValue != 0 );
 
             for ( LinearSearchMapEntry& Entry : Data ) {
-                if ( int CurrentKey = Entry.Key.Load(); CurrentKey != InKey ) {
+                int CurrentKey = Entry.Key.Load();
+
+                if ( CurrentKey != InKey ) {
                     if ( CurrentKey != 0 )
                         continue;
 
@@ -32,7 +34,7 @@ namespace samples {
             }
         }
 
-        [[nodiscard]] int GetItem( int InKey ) const noexcept {
+        HAKLE_NODISCARD int GetItem( int InKey ) const noexcept {
             assert( InKey != 0 );
 
             for ( const LinearSearchMapEntry& Entry : Data ) {
