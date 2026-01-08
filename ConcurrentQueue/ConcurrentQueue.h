@@ -806,7 +806,7 @@ private:
         IdxEntry            = LocalIndexEntriesArray->Index[ NewTail ];
         if ( IdxEntry->Key.load( std::memory_order_relaxed ) == INVALID_BLOCK_BASE || IdxEntry->Value.load( std::memory_order_relaxed ) == nullptr ) {
             IdxEntry->Key.store( BlockStartIndex, std::memory_order_relaxed );
-            LocalIndexEntriesArray->Tail.store( NewTail, std::memory_order_relaxed );
+            LocalIndexEntriesArray->Tail.store( NewTail, std::memory_order_release );
             return true;
         }
 
@@ -842,7 +842,7 @@ private:
         LocalBlockIndexArray   = CurrentIndexEntryArray().load( std::memory_order_acquire );
         std::size_t Tail       = LocalBlockIndexArray->Tail.load( std::memory_order_acquire );
         std::size_t TailBase   = LocalBlockIndexArray->Index[ Tail ]->Key.load( std::memory_order_relaxed );
-        std::size_t Offset     = ( (Index & ~( BlockSize - 1 )) - TailBase ) >> BlockSizeLog2;
+        std::size_t Offset     = ( ( Index & ~( BlockSize - 1 ) ) - TailBase ) >> BlockSizeLog2;
         std::size_t BlockIndex = ( Tail + Offset ) & ( LocalBlockIndexArray->Size - 1 );
         return BlockIndex;
     }
