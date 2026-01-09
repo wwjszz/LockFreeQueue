@@ -184,6 +184,8 @@ TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
 
 // ========== （选做）测试 5: 多消费者压力 + 构造异常注入 ==========
 
+// TODO: fix test bug
+
 TEST( ExplicitQueueExceptionTest, MultiConsumerStress_ThrowOnCtor ) {
     constexpr std::size_t POOL_SIZE = 256;
     BlockManager          mgr( POOL_SIZE );

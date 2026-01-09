@@ -4,13 +4,14 @@
 
 #ifndef BLOCKMANAGER_H
 #define BLOCKMANAGER_H
-#include "Block.h"
-#include "common/CompressPair.h"
-#include "common/allocator.h"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+
+#include "Block.h"
+#include "common/CompressPair.h"
+#include "common/allocator.h"
 
 // BlockPool + FreeList
 namespace hakle {

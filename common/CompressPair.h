@@ -4,6 +4,7 @@
 
 #ifndef COMPRESSPAIR_H
 #define COMPRESSPAIR_H
+
 #include <type_traits>
 #include <utility>
 

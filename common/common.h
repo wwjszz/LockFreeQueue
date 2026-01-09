@@ -32,11 +32,13 @@
 #define HAKLE_NOEXCEPT( expr ) noexcept( expr )
 #define HAKLE_NODISCARD [[nodiscard]]
 #define HAKLE_MAYBE_UNUSED [[maybe_unused]]
+#define HAKLE_BYTE std::byte
 #else
 #define HAKLE_CONSTEXPR_IF if
 #define HAKLE_NOEXCEPT( expr ) true
 #define HAKLE_NODISCARD
 #define HAKLE_MAYBE_UNUSED
+#define HAKLE_BYTE unsigned char
 #endif
 
 #if HAKLE_CPP_VERSION >= 20

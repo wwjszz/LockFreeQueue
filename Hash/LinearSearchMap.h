@@ -12,6 +12,7 @@
 namespace hakle {
 
 namespace samples {
+
     template <std::size_t N>
     class LinearSearchMap {
     public:

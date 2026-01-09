@@ -7,15 +7,15 @@
 
 #include <atomic>
 #include <cassert>
+#include <iostream>
 
 #include "common/common.h"
 #include "common/memory.h"
 
-#include <iostream>
-
 namespace hakle {
 
 namespace core {
+
     template <class T>
     inline static constexpr void SwapRelaxed( std::atomic<T>& Left, std::atomic<T>& Right ) noexcept {
         T Temp = Left.load( std::memory_order_relaxed );

@@ -51,7 +51,140 @@ TEST( ExplicitQueueExceptionTest, Enqueue_ExceptionRollback ) {
     EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() + 1 );
 }
 
-// ========== （选做）测试 2: 多消费者压力 + 构造异常注入 ==========
+// ========== 测试 2: EnqueueBulk 中途异常回滚 ==========
+
+TEST( ExplicitQueueExceptionTest, EnqueueBulk_ExceptionRollback ) {
+    constexpr std::size_t POOL_SIZE = 16;
+    BlockManager          mgr( POOL_SIZE );
+    Queue                 q( 128, mgr );
+
+    constexpr std::size_t    COUNT = kBlockSize * 3 + 10;  // 跨 3+ 块
+    std::vector<ThrowOnCtor> src;
+    src.reserve( COUNT );
+    for ( std::size_t i = 0; i < COUNT; ++i ) {
+        src.emplace_back( static_cast<int>( i ) );
+    }
+
+    // 在 bulk 构造过程中，第 (COUNT / 2) 个构造时抛异常
+    ThrowOnCtor::Reset( /*throwOn=*/static_cast<int>( COUNT / 2 ) );
+
+    bool caught = false;
+    try {
+        q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT );
+    }
+    catch ( std::exception const& ) {
+        caught = true;
+    }
+    EXPECT_TRUE( caught );
+
+    // bulk 视为整个失败，队列应仍为空
+    EXPECT_EQ( q.Size(), 0u );
+
+    // 由队列内部为该 bulk 构造的所有对象必须全部析构
+    EXPECT_EQ( ThrowOnCtor::liveCount.load(), 1 );
+    EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() + 1 );
+}
+
+// ========== 测试 3: 异常后再成功 EnqueueBulk ==========
+
+TEST( ExplicitQueueExceptionTest, EnqueueBulk_FailThenSuccess ) {
+    constexpr std::size_t POOL_SIZE = 16;
+    BlockManager          mgr( POOL_SIZE );
+    Queue                 q( 128, mgr );
+
+    constexpr std::size_t    COUNT = kBlockSize * 2 + 5;
+    std::vector<ThrowOnCtor> src;
+    src.reserve( COUNT );
+    for ( std::size_t i = 0; i < COUNT; ++i ) {
+        src.emplace_back( static_cast<int>( i ) );
+    }
+
+    // 第一次：设定中途抛异常
+    ThrowOnCtor::Reset( /*throwOn=*/static_cast<int>( COUNT / 2 ) );
+    bool caught = false;
+    try {
+        q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT );
+    }
+    catch ( ... ) {
+        caught = true;
+    }
+    EXPECT_TRUE( caught );
+    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( ThrowOnCtor::liveCount.load(), 1 );
+    EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() + 1 );
+
+    // 第二次：不抛异常，应该完全成功
+    ThrowOnCtor::Reset( /*throwOn=*/-1 );
+    EXPECT_NO_THROW( q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT ) );
+    EXPECT_EQ( q.Size(), COUNT );
+
+    // 全部 Dequeue 出来
+    std::vector<ThrowOnCtor>* out = new std::vector<ThrowOnCtor>( COUNT );
+    auto                      got = q.DequeueBulk( out->begin(), COUNT );
+    EXPECT_EQ( got, COUNT );
+    EXPECT_EQ( q.Size(), 0u );
+
+    long long sum = 0;
+    for ( auto const& x : *out )
+        sum += x.value;
+    long long expected = ( long long )( COUNT - 1 ) * ( long long )COUNT / 2;
+    EXPECT_EQ( sum, expected );
+
+    delete out;
+
+    // 至此不应有泄漏
+    EXPECT_EQ( ThrowOnCtor::liveCount.load(), 0 );
+    EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() );
+}
+
+// ========== 测试 4: DequeueBulk 中赋值异常回滚 ==========
+
+TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
+    constexpr std::size_t POOL_SIZE = 16;
+    BlockManager          mgr( POOL_SIZE );
+    Queue                 q( 128, mgr );
+
+    constexpr std::size_t    COUNT = kBlockSize * 2;
+    std::vector<ThrowOnCtor> src;
+    src.reserve( COUNT );
+    for ( std::size_t i = 0; i < COUNT; ++i ) {
+        src.emplace_back( static_cast<int>( i ) );
+    }
+
+    // enqueue 正常
+    ThrowOnCtor::Reset( -1 );
+    EXPECT_NO_THROW( q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT ) );
+    EXPECT_EQ( q.Size(), COUNT );
+
+    auto* out                    = new std::vector<ThrowOnAssign>( COUNT );
+    ThrowOnAssign::assignCount   = 0;
+    ThrowOnAssign::throwOnAssign = static_cast<int>( COUNT / 2 );  // 第 mid 次赋值抛异常
+
+    bool caught = false;
+    try {
+        auto got = q.DequeueBulk( out->begin(), COUNT );
+        ( void )got;
+    }
+    catch ( ... ) {
+        caught = true;
+    }
+    EXPECT_TRUE( caught );
+
+    // 你的 DequeueBulk 实现中，catch 分支会销毁所有剩余 Value，并对相应 slot 调 SetSomeEmpty
+    // 所以已参与本次 DequeueBulk 的那一批元素应不再留在队列中。
+    // 简化起见：这里要求队列为空（如果你希望队列还保留没有被尝试出队的元素，可以改成 EXPECT_LE 等）
+    EXPECT_EQ( q.Size(), 0u );
+
+    delete out;
+
+    // 不应有漏掉未 Destroy 的 ThrowOnCtor
+    EXPECT_EQ( ThrowOnCtor::liveCount.load(), 0 );
+    EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() );
+}
+
+// ========== （选做）测试 5: 多消费者压力 + 构造异常注入 ==========
+
+// TODO: fix test bug
 
 TEST( ExplicitQueueExceptionTest, MultiConsumerStress_ThrowOnCtor ) {
     constexpr std::size_t POOL_SIZE = 256;

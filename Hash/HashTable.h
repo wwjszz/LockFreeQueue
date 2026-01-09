@@ -12,6 +12,7 @@
 namespace hakle {
 
 namespace samples {
+
     template <std::size_t N>
     class HashTable {
         static_assert( N != 0 && ( N & N - 1 ) == 0, "N must be a power of 2" );

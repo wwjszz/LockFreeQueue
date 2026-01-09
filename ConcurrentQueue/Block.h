@@ -4,10 +4,11 @@
 
 #ifndef LOCKFREESTRUCTURES_BLOCK_H
 #define LOCKFREESTRUCTURES_BLOCK_H
-#include "common/common.h"
 
 #include <array>
 #include <atomic>
+
+#include "common/common.h"
 
 namespace hakle {
 
@@ -29,8 +30,8 @@ concept IsBlock = requires {
     { T::BlockSize } -> std::convertible_to<std::size_t>;
 } && T::BlockSize > 1 && std::has_single_bit( static_cast<std::size_t>( T::BlockSize ) ) && IsPolicy<T>;
 
-template<class T>
-concept IsBlockWithMeaningfulSetResult  = IsBlock<T> && (T::HasMeaningfulSetResult == true);
+template <class T>
+concept IsBlockWithMeaningfulSetResult = IsBlock<T> && ( T::HasMeaningfulSetResult == true );
 #endif
 
 template <class T>
@@ -141,14 +142,7 @@ struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {
     constexpr T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
     constexpr const T* operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
 
-    alignas( T ) std::array<
-#if HAKLE_CPP_VERSION >= 17
-        std::byte
-#else
-        unsigned char
-#endif
-        ,
-        sizeof( T ) * BLOCK_SIZE> Elements{};
+    alignas( T ) std::array<HAKLE_BYTE, sizeof( T ) * BLOCK_SIZE> Elements{};
 
     HakleBlock* Next{ nullptr };
 };

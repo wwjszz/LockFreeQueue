@@ -5,15 +5,15 @@
 #ifndef CONCURRENTQUEUE_H
 #define CONCURRENTQUEUE_H
 
-#include "BlockManager.h"
-#include "common/CompressPair.h"
-#include "common/common.h"
-#include "common/utility.h"
-
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <type_traits>
+
+#include "BlockManager.h"
+#include "common/CompressPair.h"
+#include "common/common.h"
+#include "common/utility.h"
 
 namespace hakle {
 
@@ -230,17 +230,17 @@ public:
         BlockType*  FirstAllocatedBlock    = nullptr;
 
         // roll back
-        auto RollBack = [ this, &OriginIndexEntriesUsed, &OriginNextIndexEntry, &StartBlock, &FirstAllocatedBlock ]() -> bool {
+        auto RollBack = [ this, &OriginIndexEntriesUsed, &OriginNextIndexEntry, &StartBlock, &FirstAllocatedBlock ]() -> void {
             PO_IndexEntriesUsed() = OriginIndexEntriesUsed;
             PO_NextIndexEntry()   = OriginNextIndexEntry;
             this->TailBlock       = StartBlock == nullptr ? FirstAllocatedBlock : StartBlock;
-            return false;
         };
 
         std::size_t LastTailIndex = StartTailIndex - 1;
         // std::size_t BlockCountNeed =
         //     ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) - ( ( LastTailIndex & ~( BlockSize - 1 ) ) ) ) >> BlockSizeLog2;
 
+        // StartTailIndex - 1 must be signed before shifting
         std::size_t BlockCountNeed = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 )
                                      - ( static_cast<std::make_signed_t<std::size_t>>( StartTailIndex - 1 ) >> BlockSizeLog2 );
         std::size_t CurrentTailIndex = LastTailIndex & ~( BlockSize - 1 );
@@ -266,14 +266,19 @@ public:
                 --BlockCountNeed;
                 // TODO: add MAX_SIZE check
                 if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
-                    return RollBack();
+                    RollBack();
+                    return false;
                 }
 
                 if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
                     // need to create a new index entry array
-                    HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return RollBack(); }
+                    HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) {
+                        RollBack();
+                        return false;
+                    }
                     else if ( !CreateNewBlockIndexArray( OriginIndexEntriesUsed ) ) {
-                        return RollBack();
+                        RollBack();
+                        return false;
                     }
 
                     OriginNextIndexEntry = OriginIndexEntriesUsed;
@@ -281,7 +286,8 @@ public:
 
                 BlockType* NewBlock = BlockManager.RequisitionBlock( Mode );
                 if ( NewBlock == nullptr ) {
-                    return RollBack();
+                    RollBack();
+                    return false;
                 }
 
                 NewBlock->Reset();
@@ -335,7 +341,6 @@ public:
                         }
                     }
 
-                    // TODO: return false
                     RollBack();
 
                     // destroy all values
@@ -730,6 +735,117 @@ public:
         return true;
     }
 
+    template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
+    HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
+        std::size_t OriginTailIndex     = this->TailIndex.load( std::memory_order_relaxed );
+        BlockType*  OriginTailBlock     = this->TailBlock;
+        BlockType*  FirstAllocatedBlock = nullptr;
+
+        auto RollBack = [ this, &FirstAllocatedBlock, OriginTailIndex, OriginTailBlock ]() {
+            IndexEntry* IndexEntry       = nullptr;
+            std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
+            for ( BlockType* Block = FirstAllocatedBlock; Block; Block = Block->Next ) {
+                CurrentTailIndex += BlockSize;
+                IndexEntry = GetBlockIndexEntryForIndex( CurrentTailIndex );
+                IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                RewindBlockIndexTail();
+            }
+
+            BlockManager().ReturnBlocks( FirstAllocatedBlock );
+            this->TailBlock = OriginTailBlock;
+        };
+
+        std::size_t NeedCount = ( ( OriginTailIndex + Count - 1 ) >> BlockSizeLog2 )
+                                - ( static_cast<std::make_signed_t<std::size_t>>( OriginTailIndex - 1 ) >> BlockSizeLog2 );
+        std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
+        // allocate index entry and block
+        while ( NeedCount > 0 ) {
+            CurrentTailIndex += BlockSize;
+            --NeedCount;
+
+            bool        IndexInserted = false;
+            BlockType*  NewBlock      = nullptr;
+            IndexEntry* IndexEntry    = nullptr;
+
+            // TODO: add MAX_SIZE check
+            bool full = !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize );
+            if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) )
+                 || !( NewBlock = BlockManager().RequisitionBlock( Mode ) ) ) {
+                if ( IndexInserted ) {
+                    RewindBlockIndexTail();
+                    IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                }
+                RollBack();
+                return false;
+            }
+
+            NewBlock->Reset();
+            NewBlock->Next = nullptr;
+
+            IndexEntry->Value.store( NewBlock, std::memory_order_relaxed );
+
+            if ( ( OriginTailIndex & ( BlockSize - 1 ) ) != 0 || FirstAllocatedBlock != nullptr ) {
+                this->TailBlock->Next = NewBlock;
+            }
+            this->TailBlock = NewBlock;
+            if ( FirstAllocatedBlock == nullptr ) {
+                FirstAllocatedBlock = NewBlock;
+            }
+        }
+
+        // we already have enough blocks, let's fill them
+        std::size_t StartInnerIndex = OriginTailIndex & ( BlockSize - 1 );
+        BlockType*  StartBlock      = ( StartInnerIndex == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : OriginTailBlock;
+        BlockType*  CurrentBlock    = StartBlock;
+        while ( true ) {
+            std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock ) ? ( OriginTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
+            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
+                while ( StartInnerIndex <= EndInnerIndex ) {
+                    ValueAllocatorTraits::Construct( ValueAllocator(), ( *CurrentBlock )[ StartInnerIndex ], *ItemFirst++ );
+                    ++StartInnerIndex;
+                }
+            }
+            else {
+                HAKLE_TRY {
+                    while ( StartInnerIndex <= EndInnerIndex ) {
+                        ValueAllocatorTraits::Construct( ValueAllocator(), ( *( CurrentBlock ) )[ StartInnerIndex ], *ItemFirst++ );
+                        ++StartInnerIndex;
+                    }
+                }
+                HAKLE_CATCH( ... ) {
+                    // first, we need to destroy all values
+                    HAKLE_CONSTEXPR_IF( !std::is_trivially_destructible<ValueType>::value ) {
+                        std::size_t StartInnerIndex2 = OriginTailIndex & ( BlockSize - 1 );
+                        BlockType*  StartBlock2      = ( StartInnerIndex2 == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : StartBlock;
+                        while ( true ) {
+                            std::size_t EndInnerIndex2 = ( StartBlock2 == CurrentBlock ) ? StartInnerIndex : BlockSize;
+                            while ( StartInnerIndex2 != EndInnerIndex2 ) {
+                                ValueAllocatorTraits::Destroy( ValueAllocator(), ( *( StartBlock2 ) )[ StartInnerIndex2 ] );
+                                ++StartInnerIndex2;
+                            }
+                            if ( StartBlock2 == CurrentBlock ) {
+                                break;
+                            }
+                            StartBlock2      = StartBlock2->Next;
+                            StartInnerIndex2 = 0;
+                        }
+                    }
+
+                    RollBack();
+                    HAKLE_RETHROW;
+                }
+            }
+            if ( CurrentBlock == this->TailBlock ) {
+                break;
+            }
+            StartInnerIndex = 0;
+            CurrentBlock    = CurrentBlock->Next;
+        }
+
+        this->TailIndex.store( OriginTailIndex + Count, std::memory_order_release );
+        return true;
+    }
+
     template <class U>
     constexpr bool Dequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), ValueType&&> ) {
         std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
@@ -779,6 +895,98 @@ public:
             this->DequeueFailedCount.fetch_add( 1, std::memory_order_release );
         }
         return false;
+    }
+
+    template <HAKLE_CONCEPT( std::output_iterator<ValueType&&> ) Iterator>
+    std::size_t DequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
+        std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
+        std::size_t DesiredCount =
+            this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
+        if ( HAKLE_LIKELY( CircularLessThan<std::size_t>( 0, DesiredCount ) ) ) {
+            DesiredCount = std::min( DesiredCount, MaxCount );
+            // TODO: understand this
+            std::atomic_thread_fence( std::memory_order_acquire );
+
+            std::size_t AttemptsCount = this->DequeueAttemptsCount.fetch_add( DesiredCount, std::memory_order_relaxed );
+            std::size_t ActualCount   = this->TailIndex.load( std::memory_order_acquire ) - ( AttemptsCount - FailedCount );
+            if ( HAKLE_LIKELY( CircularLessThan<std::size_t>( 0, ActualCount ) ) ) {
+                ActualCount = std::min( ActualCount, DesiredCount );
+                if ( ActualCount < DesiredCount ) {
+                    this->DequeueFailedCount.fetch_add( DesiredCount - ActualCount, std::memory_order_release );
+                }
+
+                std::size_t Index = this->HeadIndex.fetch_add( ActualCount, std::memory_order_relaxed );
+                std::size_t InnerIndex = Index & ( BlockSize - 1 );
+
+                std::size_t StartIndex   = InnerIndex;
+                std::size_t NeedCount    = ActualCount;
+
+                IndexEntryArray* LocalIndexEntryArray;
+                std::size_t IndexEntryIndex = GetBlockIndexIndexForIndex( Index,  LocalIndexEntryArray);
+                while ( NeedCount != 0 ) {
+                    IndexEntry* DequeueIndexEntry = LocalIndexEntryArray->Index[IndexEntryIndex];
+                    BlockType* DequeueBlock = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
+                    std::size_t EndIndex     = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
+                    std::size_t CurrentIndex = StartIndex;
+                    HAKLE_CONSTEXPR_IF( std::is_nothrow_assignable<typename std::iterator_traits<Iterator>::value_type, ValueType&&>::value ) {
+                        while ( CurrentIndex != EndIndex ) {
+                            ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
+                            *ItemFirst       = std::move( Value );
+                            ++ItemFirst;
+                            ValueAllocatorTraits::Destroy( ValueAllocator(), &Value );
+                            ++CurrentIndex;
+                            --NeedCount;
+                        }
+                    }
+                    else {
+                        HAKLE_TRY {
+                            while ( CurrentIndex != EndIndex ) {
+                                ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
+                                *ItemFirst++     = std::move( Value );
+                                ValueAllocatorTraits::Destroy( ValueAllocator(), &Value );
+                                ++CurrentIndex;
+                                --NeedCount;
+                            }
+                        }
+                        HAKLE_CATCH( ... ) {
+                            // we need to destroy all the remaining values
+                            goto Enter;
+                            while ( NeedCount != 0 ) {
+                                DequeueIndexEntry = LocalIndexEntryArray->Index[IndexEntryIndex];
+                                DequeueBlock = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
+                                EndIndex     = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
+                                CurrentIndex = StartIndex;
+                            Enter:
+                                while ( CurrentIndex != EndIndex ) {
+                                    ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
+                                    ValueAllocatorTraits::Destroy( ValueAllocator(), &Value );
+                                    --NeedCount;
+                                    ++CurrentIndex;
+                                }
+
+                                if (DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
+                                    DequeueIndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                                    BlockManager().ReturnBlock( DequeueBlock );
+                                }
+                                StartIndex   = 0;
+                                IndexEntryIndex = (IndexEntryIndex + 1 ) & (LocalIndexEntryArray->Size - 1);
+                            }
+                            HAKLE_RETHROW;
+                        }
+                    }
+                    if (DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
+                        DequeueIndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                        BlockManager().ReturnBlock( DequeueBlock );
+                    }
+                    StartIndex   = 0;
+                    IndexEntryIndex = (IndexEntryIndex + 1 ) & (LocalIndexEntryArray->Size - 1);
+                }
+                return ActualCount;
+            }
+
+            this->DequeueFailedCount.fetch_add( DesiredCount, std::memory_order_release );
+        }
+        return 0;
     }
 
 private:

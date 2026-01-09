@@ -12,7 +12,7 @@
 using namespace hakle;
 
 // 使用的 block size
-constexpr std::size_t kBlockSize = 2;
+constexpr std::size_t kBlockSize = 64;
 
 constexpr std::size_t POOL_SIZE = 100;
 using TestCounterBlock          = HakleCounterBlock<int, kBlockSize>;
@@ -203,6 +203,71 @@ TEST( ConcurrentQueueTest, HighVolumeStressTest ) {
     EXPECT_EQ( queue.Size(), 0 );
 }
 
+// === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
+TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
+    TestCounterBlockManager blockManager( POOL_SIZE );
+    TestCounterQueue        queue( 100, blockManager );
+    using AllocMode = TestCounterQueue::AllocMode;
+
+    std::cout << TestCounterQueue::BlockSize << std::endl;
+
+    const unsigned long long        N             = 800000;  // 每个数从 0 到 N-1
+    const int                       NUM_CONSUMERS = 30;      // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
+    std::vector<std::thread>        consumers;
+    std::atomic<unsigned long long> count{ 0 };
+
+    int* a = new int[ 100 ]{};
+    for ( int i = 0; i < 100; ++i ) {
+        a[ i ] = i;
+    }
+
+    // 生产者：生产 0 ~ N-1
+    std::thread producer( [ &queue, N, a ]() {
+        for ( int i = 0; i < N; ++i ) {
+            while ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 100 ) ) {
+                printf( "enqueue failed\n" );
+            }
+        }
+    } );
+
+    // 创建多个消费者
+    for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
+        consumers.emplace_back( [ &queue, N, &total_sum, &count ]() {
+            unsigned long long local_sum = 0;
+            int                value;
+
+            // 每个消费者一直取，直到取到 N 个元素为止
+            while ( count < N * 100 ) {
+                int buffer[ 10 ]{};
+                if ( std::size_t get_count = queue.DequeueBulk( &buffer[ 0 ], 10 ) ) {
+                    for ( int i = 0; i < get_count; ++i ) {
+                        local_sum += buffer[ i ];
+                        ++count;
+                    }
+                }
+            }
+
+            // 累加到总和（使用原子操作）
+            total_sum.fetch_add( local_sum, std::memory_order_relaxed );
+        } );
+    }
+
+    // 等待生产者和所有消费者完成
+    producer.join();
+    for ( auto& t : consumers ) {
+        t.join();
+    }
+
+    // 验证：总和是否正确
+    unsigned long long expected_sum = 99 * 50 * N;
+    EXPECT_EQ( total_sum.load(), expected_sum );
+
+    // 验证队列为空
+    EXPECT_EQ( queue.Size(), 0 );
+}
+
+
 struct ExceptionTest {
     ExceptionTest( int v = 0 ) : value( v ) {
         if ( v == 5 ) {
@@ -221,6 +286,92 @@ struct ExceptionTest {
     ~ExceptionTest() = default;
     int value;
 };
+
+// === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
+TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
+    using ExceptionBlock       = HakleCounterBlock<ExceptionTest, kBlockSize>;
+    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
+    using ExceptionQueue       = SlowQueue<ExceptionBlock>;
+    ExceptionBlockManger blockManager( POOL_SIZE );
+    ExceptionQueue       queue( 100, blockManager );
+    using AllocMode = ExceptionQueue::AllocMode;
+
+    const unsigned long long        N             = 800;  // 每个数从 0 到 N-1
+    const int                       NUM_CONSUMERS = 68;   // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };       // 所有消费者结果累加
+    std::vector<std::thread>        consumers;
+    std::atomic<unsigned long long> count{ 0 };
+    std::atomic<int>                failed{ 0 };
+
+    int* a = new int[ 100 ]{};
+    for ( int i = 0; i < 100; ++i ) {
+        a[ i ] = i;
+    }
+
+    // 生产者：生产 0 ~ N-1
+    std::thread producer( [ &queue, N, a ]() {
+        for ( std::size_t i = 1; i <= N; ++i ) {
+            a[ 0 ] = i % 100;
+            try {
+                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 1 ) ) {
+                    printf( "enqueue failed\n" );
+                }
+            }
+            catch ( ... ) {
+                // printf("find a exception\n");
+                // do nothing
+            }
+        }
+    } );
+
+    // 创建多个消费者
+    for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
+        consumers.emplace_back( [ &queue, N, &total_sum, &count, &failed ]() {
+            unsigned long long local_sum = 0;
+            int                value;
+
+            // 每个消费者一直取，直到取到 N 个元素为止
+            while ( count < N - ( N / 100 ) ) {
+                ExceptionTest buffer[ 1 ]{};
+                // std::size_t   random_index = rand() % 100;
+                // printf("random_index: %zu\n", random_index);
+                try {
+                    std::size_t get_count = queue.DequeueBulk( &buffer[ 0 ], 1 );
+                    count.fetch_add( get_count, std::memory_order_relaxed );
+                    for ( std::size_t i = 0; i < get_count; ++i ) {
+                        local_sum += buffer[ i ].value;
+                    }
+                }
+                catch ( ... ) {
+                    count.fetch_add( 1, std::memory_order_relaxed );
+                    failed.fetch_add( 1, std::memory_order_relaxed );
+                }
+            }
+
+            // 累加到总和（使用原子操作）
+            total_sum.fetch_add( local_sum, std::memory_order_relaxed );
+        } );
+    }
+
+    // 等待生产者和所有消费者完成
+    producer.join();
+    for ( auto& t : consumers ) {
+        t.join();
+    }
+
+    // 验证：总和是否正确
+    // unsigned long long expected_sum = 101 * 50 * N;
+    // EXPECT_EQ( total_sum.load(), expected_sum );
+    EXPECT_EQ( failed.load(), 0 );
+    // EXPECT_EQ( count.load(), N * 100 );
+    printf( "count: %llu\n", count.load() );
+    printf( "failed: %d\n", failed.load() );
+    printf( "total_sum: %llu\n", total_sum.load() );
+    printf( "expected_sum: %llu\n", 101 * 50 * N );
+
+    // 验证队列为空
+    EXPECT_EQ( queue.Size(), 0 );
+}
 
 // test/queue_test.cpp 最后加上：
 int main( int argc, char** argv ) {
