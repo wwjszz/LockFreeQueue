@@ -19,7 +19,7 @@ constexpr std::size_t kBlockSize = 64;
 
 using Block        = HakleCounterBlock<ThrowOnCtor, kBlockSize>;
 using BlockManager = HakleBlockManager<Block>;
-using Queue        = SlowQueue<Block, BlockManager>;
+using Queue        = SlowQueue<ThrowOnCtor, kBlockSize>;
 using AllocMode    = Queue::AllocMode;
 
 // 如果你的 BlockManager 类型名不同，改一下上面的 using 即可。

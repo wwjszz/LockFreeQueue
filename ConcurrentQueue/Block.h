@@ -30,6 +30,9 @@ concept IsBlock = requires {
     { T::BlockSize } -> std::convertible_to<std::size_t>;
 } && T::BlockSize > 1 && std::has_single_bit( static_cast<std::size_t>( T::BlockSize ) ) && IsPolicy<T>;
 
+template <std::size_t BLOCK_SIZE, class BLOCK_TYPE>
+concept CheckBlockSize = IsBlock<BLOCK_TYPE> && BLOCK_SIZE == BLOCK_TYPE::BlockSize;
+
 template <class T>
 concept IsBlockWithMeaningfulSetResult = IsBlock<T> && ( T::HasMeaningfulSetResult == true );
 #endif

@@ -15,16 +15,12 @@ using namespace hakle;
 constexpr std::size_t kBlockSize = 64;
 
 constexpr std::size_t POOL_SIZE = 100;
-using TestCounterBlock          = HakleCounterBlock<int, kBlockSize>;
-using TestFlagsBlock            = TestCounterBlock;
-using TestCounterAllocator      = HakleAllocator<TestCounterBlock>;
-using TestCounterBlockManager   = HakleBlockManager<TestCounterBlock, TestCounterAllocator>;
-using TestFlagsAllocator        = HakleAllocator<TestFlagsBlock>;
-using TestFlagsBlockManager     = HakleBlockManager<TestFlagsBlock, TestFlagsAllocator>;
-
 // 定义测试队列类型
-using TestFlagsQueue   = SlowQueue<TestFlagsBlock, TestFlagsBlockManager>;
-using TestCounterQueue = SlowQueue<TestCounterBlock, TestCounterBlockManager>;
+using TestFlagsQueue   = SlowQueue<int, kBlockSize>;
+using TestCounterQueue = SlowQueue<int, kBlockSize>;
+
+using TestCounterBlockManager = HakleCounterBlockManager<int, kBlockSize>;
+using TestFlagsBlockManager   = HakleCounterBlockManager<int, kBlockSize>;
 
 // 辅助：等待一段时间让操作完成
 void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::milliseconds( ms ) ); }
@@ -130,9 +126,8 @@ struct ThrowingType {
     ThrowingType( const ThrowingType& )            = default;
     ThrowingType& operator=( const ThrowingType& ) = default;
 };
-using ThrowingBlock        = HakleCounterBlock<ThrowingType, kBlockSize>;
-using ThrowingBlockManager = HakleBlockManager<ThrowingBlock>;
-using ThrowingQueue        = SlowQueue<ThrowingBlock>;
+using ThrowingBlockManager = HakleCounterBlockManager<ThrowingType, kBlockSize>;
+using ThrowingQueue        = SlowQueue<ThrowingType, kBlockSize>;
 
 TEST( ConcurrentQueueTest, ExceptionSafety ) {
     ThrowingBlockManager blockManager( POOL_SIZE );
@@ -208,8 +203,8 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
     TestCounterQueue        queue( 100, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
 
-    const unsigned long long        N             = 800000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 30;      // 3 个消费者
+    const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
+    const int                       NUM_CONSUMERS = 68;      // 3 个消费者
     std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
@@ -285,9 +280,8 @@ struct ExceptionTest {
 
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
 TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
-    using ExceptionBlock       = HakleCounterBlock<ExceptionTest, kBlockSize>;
-    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
-    using ExceptionQueue       = SlowQueue<ExceptionBlock>;
+    using ExceptionBlockManger = HakleCounterBlockManager<ExceptionTest, kBlockSize>;
+    using ExceptionQueue       = SlowQueue<ExceptionTest, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
     ExceptionQueue       queue( 100, blockManager );
     using AllocMode = ExceptionQueue::AllocMode;

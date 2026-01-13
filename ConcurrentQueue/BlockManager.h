@@ -54,6 +54,9 @@ concept IsBlockManager = requires( T& t, typename T::AllocMode Mode, typename T:
     t.ReturnBlocks( p );
 };
 
+template <class BLOCK_TYPE, class T>
+concept CheckBlockManager = IsBlock<BLOCK_TYPE> && std::same_as<BLOCK_TYPE, typename T::BlockType>;
+
 #endif
 
 struct MemoryBase {
@@ -298,6 +301,12 @@ private:
     BlockPool<BlockType> Pool;
     FreeList<BlockType>  FreeList;
 };
+
+template <class T, std::size_t BLOCK_SIZE>
+using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>>;
+
+template <class T, std::size_t BLOCK_SIZE>
+using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>>;
 
 }  // namespace hakle
 

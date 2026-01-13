@@ -18,7 +18,8 @@
 namespace hakle {
 
 // TODO: manager traits
-template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
+template <class T, std::size_t BLOCK_SIZE, class Allocator, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
+HAKLE_REQUIRES( CheckBlockSize<BLOCK_SIZE, BLOCK_TYPE>&& CheckBlockManager<BLOCK_TYPE, BLOCK_MANAGER_TYPE> )
 struct QueueBase {
 public:
     using BlockManagerType                 = BLOCK_MANAGER_TYPE;
@@ -26,8 +27,8 @@ public:
     using ValueType                        = typename BlockManagerType::ValueType;
     constexpr static std::size_t BlockSize = BlockManagerType::BlockSize;
 
-    using BlockAllocatorTraits = typename BlockManagerType::BlockAllocatorTraits;
-    using BlockAllocatorType   = typename BlockManagerType::AllocatorType;
+    using ValueAllocatorType   = Allocator;
+    using ValueAllocatorTraits = HakeAllocatorTraits<ValueAllocatorType>;
 
     using AllocMode = typename BlockManagerType::AllocMode;
 
@@ -50,17 +51,18 @@ protected:
 };
 
 // SPMC Queue
-template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
-class FastQueue : public QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
+template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>,
+          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
+class FastQueue : public QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
-    using Base = QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
+    using Base = QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
 
     using Base::BlockSize;
     using typename Base::AllocMode;
-    using typename Base::BlockAllocatorTraits;
-    using typename Base::BlockAllocatorType;
     using typename Base::BlockManagerType;
     using typename Base::BlockType;
+    using typename Base::ValueAllocatorTraits;
+    using typename Base::ValueAllocatorType;
     using typename Base::ValueType;
 
 private:
@@ -68,12 +70,10 @@ private:
 
     struct IndexEntry;
     struct IndexEntryArray;
-    using IndexEntryAllocatorType        = typename BlockAllocatorTraits::template RebindAlloc<IndexEntry>;
-    using IndexEntryArrayAllocatorType   = typename BlockAllocatorTraits::template RebindAlloc<IndexEntryArray>;
-    using ValueAllocatorType             = typename BlockAllocatorTraits::template RebindAlloc<ValueType>;
+    using IndexEntryAllocatorType        = typename ValueAllocatorTraits::template RebindAlloc<IndexEntry>;
+    using IndexEntryArrayAllocatorType   = typename ValueAllocatorTraits::template RebindAlloc<IndexEntryArray>;
     using IndexEntryAllocatorTraits      = HakeAllocatorTraits<IndexEntryAllocatorType>;
     using IndexEntryArrayAllocatorTraits = HakeAllocatorTraits<IndexEntryArrayAllocatorType>;
-    using ValueAllocatorTraits           = HakeAllocatorTraits<ValueAllocatorType>;
 
 public:
     constexpr explicit FastQueue( std::size_t InSize, BlockManagerType& InBlockManager ) : BlockManager( InBlockManager ) {
@@ -465,6 +465,7 @@ public:
                 BlockType*  DequeueBlock = FirstDequeueBlock;
                 std::size_t StartIndex   = InnerIndex;
                 std::size_t NeedCount    = ActualCount;
+                int test = -1;
                 while ( NeedCount != 0 ) {
                     std::size_t EndIndex     = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
                     std::size_t CurrentIndex = StartIndex;
@@ -509,9 +510,9 @@ public:
                             HAKLE_RETHROW;
                         }
                     }
+                    DequeueBlock = DequeueBlock->Next;
                     DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex );
                     StartIndex   = 0;
-                    DequeueBlock = DequeueBlock->Next;
                 }
                 return ActualCount;
             }
@@ -608,18 +609,19 @@ private:
     IndexEntry* PO_PrevEntries{ nullptr };
 };
 
-template <HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE,
-          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
-class SlowQueue : public QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
+template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>,
+          HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE = HakleCounterBlock<T, BLOCK_SIZE>,
+          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE         = HakleBlockManager<BLOCK_TYPE>>
+class SlowQueue : public QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
-    using Base = QueueBase<BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
+    using Base = QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
 
     using Base::BlockSize;
     using typename Base::AllocMode;
-    using typename Base::BlockAllocatorTraits;
-    using typename Base::BlockAllocatorType;
     using typename Base::BlockManagerType;
     using typename Base::BlockType;
+    using typename Base::ValueAllocatorTraits;
+    using typename Base::ValueAllocatorType;
     using typename Base::ValueType;
 
 private:
@@ -628,15 +630,13 @@ private:
 
     struct IndexEntry;
     struct IndexEntryArray;
-    using IndexEntryAllocatorType        = typename BlockAllocatorTraits::template RebindAlloc<IndexEntry>;
-    using IndexEntryArrayAllocatorType   = typename BlockAllocatorTraits::template RebindAlloc<IndexEntryArray>;
-    using IndexEntryPointerAllocatorType = typename BlockAllocatorTraits::template RebindAlloc<IndexEntry*>;
-    using ValueAllocatorType             = typename BlockAllocatorTraits::template RebindAlloc<ValueType>;
+    using IndexEntryAllocatorType        = typename ValueAllocatorTraits::template RebindAlloc<IndexEntry>;
+    using IndexEntryArrayAllocatorType   = typename ValueAllocatorTraits::template RebindAlloc<IndexEntryArray>;
+    using IndexEntryPointerAllocatorType = typename ValueAllocatorTraits::template RebindAlloc<IndexEntry*>;
 
     using IndexEntryAllocatorTraits        = HakeAllocatorTraits<IndexEntryAllocatorType>;
     using IndexEntryArrayAllocatorTraits   = HakeAllocatorTraits<IndexEntryArrayAllocatorType>;
     using IndexEntryPointerAllocatorTraits = HakeAllocatorTraits<IndexEntryPointerAllocatorType>;
-    using ValueAllocatorTraits             = HakeAllocatorTraits<ValueAllocatorType>;
 
 public:
     constexpr SlowQueue( std::size_t InSize, BlockManagerType& InBlockManager ) : IndexEntryArrayAllocatorPair( InBlockManager, ValueInitTag{} ) {
