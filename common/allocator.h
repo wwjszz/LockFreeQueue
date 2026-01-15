@@ -79,6 +79,8 @@ struct HakeAllocatorTraits {
 
     template <class U>
     using RebindAlloc = typename AllocatorTraitsRebind<AllocatorType, U>::Type;
+    template <class U>
+    using RebindTraits = HakeAllocatorTraits<RebindAlloc<U>>;
 
     static Pointer Allocate( AllocatorType& Allocator ) { return Allocator.Allocate(); }
     static Pointer Allocate( AllocatorType& Allocator, SizeType n ) { return Allocator.Allocate( n ); }
@@ -110,7 +112,8 @@ public:
     using DifferenceType = std::ptrdiff_t;
 
     ~HakleAllocator() {
-        printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() );
+        printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(),
+                ConstructCount.load() );
     }
 
     static std::atomic<int> AllocateCount;
@@ -148,9 +151,7 @@ public:
         HAKLE_DESTROY_ARRAY( ptr, n );
         ConstructCount -= n;
     }
-    constexpr void Destroy( Pointer first, Pointer last ) noexcept {
-        Destroy( first, last - first );
-    }
+    constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };
 
 template <class Tp>
@@ -161,6 +162,7 @@ std::atomic<int> HakleAllocator<Tp>::ConstructCount{};
 
 #else
 
+// TODO: private
 template <class Tp>
 class HakleAllocator {
 public:

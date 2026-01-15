@@ -13,9 +13,7 @@
 namespace hakle {
 
 template <class T>
-#if HAKLE_CPP_VERSION >= 20
-    requires std::is_unsigned_v<T>
-#endif
+HAKLE_REQUIRES( std::is_unsigned_v<T> )
 inline constexpr bool CircularLessThan( T a, T b ) noexcept {
     return static_cast<T>( a - b ) > static_cast<T>( static_cast<T>( 1 ) << ( static_cast<T>( sizeof( T ) * CHAR_BIT - 1 ) ) );
 }

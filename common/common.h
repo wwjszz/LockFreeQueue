@@ -49,7 +49,7 @@
 #else
 #define HAKLE_CPP20_CONSTEXPR
 #define HAKLE_CONCEPT( expr ) class
-#define HAKLE_REQUIRES
+#define HAKLE_REQUIRES( ... )
 #endif
 
 #if HAKLE_CPP_VERSION >= 14

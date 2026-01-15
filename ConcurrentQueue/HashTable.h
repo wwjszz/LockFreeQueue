@@ -6,11 +6,11 @@
 #define HashTable_H
 
 #include <atomic>
-#include <cassert>
-#include <iostream>
 
 #include "common/common.h"
 #include "common/memory.h"
+
+#include <assert.h>
 
 namespace hakle {
 
@@ -60,14 +60,17 @@ namespace core {
     };
 
     template <class T>
-#if HAKLE_CPP_VERSION >= 20
-        requires std::is_integral<T>::value
-#endif
+    HAKLE_REQUIRES( std::is_integral_v<T> )
     T Hash( T Key ) noexcept {
         return HashImpl<T>::Hash( Key );
     }
 
 }  // namespace core
+
+#if HAKLE_CPP_VERSION >= 20
+template <class T>
+concept AtomicIsLockFree = std::atomic<T>::is_always_lock_free;
+#endif
 
 enum class HashTableStatus {
     GET_SUCCESS,
@@ -80,10 +83,7 @@ template <class TKey, class TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_S
 class HashTable {
 public:
     constexpr HashTable() {
-        std::atomic<TValue> TempAtomic;
-        if ( !std::atomic_is_lock_free( &TempAtomic ) ) {
-            std::cerr << "[WARNING] std::atomic<CheckedAtomic<" << typeid( TValue ).name() << ">::value_ is NOT lock-free\n";
-        }
+        assert( std::atomic<TValue>{}.is_lock_free() );
 
         HashNode* Temp = HAKLE_NEW( HashNode, INITIAL_HASH_SIZE );
         if ( !Temp ) {

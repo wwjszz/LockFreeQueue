@@ -80,8 +80,8 @@ private:
     struct IndexEntryArray;
     using IndexEntryAllocatorType        = typename ValueAllocatorTraits::template RebindAlloc<IndexEntry>;
     using IndexEntryArrayAllocatorType   = typename ValueAllocatorTraits::template RebindAlloc<IndexEntryArray>;
-    using IndexEntryAllocatorTraits      = HakeAllocatorTraits<IndexEntryAllocatorType>;
-    using IndexEntryArrayAllocatorTraits = HakeAllocatorTraits<IndexEntryArrayAllocatorType>;
+    using IndexEntryAllocatorTraits      = typename ValueAllocatorTraits::template RebindTraits<IndexEntry>;
+    using IndexEntryArrayAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntryArray>;
 
 public:
     constexpr explicit FastQueue( std::size_t InSize, BlockManagerType& InBlockManager,
@@ -157,7 +157,7 @@ public:
         std::size_t NewTailIndex     = CurrentTailIndex + 1;
         std::size_t InnerIndex       = CurrentTailIndex & ( BlockSize - 1 );
         if ( InnerIndex == 0 ) {
-            BlockType*  OldTailBlock        = this->TailBlock();
+            BlockType* OldTailBlock = this->TailBlock();
             // zero, in fact
             // we must find a new block
             if ( this->TailBlock() != nullptr && this->TailBlock()->Next->IsEmpty() ) {
@@ -652,9 +652,9 @@ private:
     using IndexEntryArrayAllocatorType   = typename ValueAllocatorTraits::template RebindAlloc<IndexEntryArray>;
     using IndexEntryPointerAllocatorType = typename ValueAllocatorTraits::template RebindAlloc<IndexEntry*>;
 
-    using IndexEntryAllocatorTraits        = HakeAllocatorTraits<IndexEntryAllocatorType>;
-    using IndexEntryArrayAllocatorTraits   = HakeAllocatorTraits<IndexEntryArrayAllocatorType>;
-    using IndexEntryPointerAllocatorTraits = HakeAllocatorTraits<IndexEntryPointerAllocatorType>;
+    using IndexEntryAllocatorTraits        = typename ValueAllocatorTraits::template RebindTraits<IndexEntry>;
+    using IndexEntryArrayAllocatorTraits   = typename ValueAllocatorTraits::template RebindTraits<IndexEntryArray>;
+    using IndexEntryPointerAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntry*>;
 
 public:
     constexpr SlowQueue( std::size_t InSize, BlockManagerType& InBlockManager ) : IndexEntryArrayAllocatorPair( InBlockManager, ValueInitTag{} ) {
@@ -1048,9 +1048,7 @@ private:
             return true;
         }
 
-        if constexpr ( Mode == AllocMode::CannotAlloc ) {
-            return false;
-        }
+        HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return false; }
         else if ( !CreateNewBlockIndexArray() ) {
             return false;
         }
