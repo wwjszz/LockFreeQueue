@@ -1,12 +1,9 @@
 //
 // Created by admin on 25-11-24.
 //
-#include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <random>
-#include <string>
 #include <thread>
 #include <vector>
 
@@ -14,7 +11,6 @@
 #include "../ConcurrentQueue/HashTable.h"
 
 #include <iostream>
-#include <limits>
 
 #include "gtest/gtest.h"
 
@@ -223,8 +219,17 @@ TEST_F( HashTableTest, HighConcurrencyInsertDifferentKeys ) {
         t.join();
     }
 
-    std::cout << "Add successes: " << add_success.load() << ", Get successes: " << get_success.load() << ", Total size: " << table->GetSize()
-              << std::endl;
+    std::vector<std::thread> get_threads;
+
+    for ( int i = 0; i < num_threads; ++i ) {
+        get_threads.emplace_back( worker, i );
+    }
+
+    for ( auto& t : get_threads ) {
+        t.join();
+    }
+
+    std::cout << "Add successes: " << add_success.load() << ", Get successes: " << get_success.load() << ", Total size: " << table->GetSize() << std::endl;
 
     // 验证所有数据都存在
     for ( int i = 0; i < num_threads; ++i ) {
@@ -400,8 +405,7 @@ TEST_F( HashTableTest, ReadWriteMixed ) {
     EXPECT_GT( read_success.load(), 0 );
     EXPECT_GT( write_success.load(), 0 );
 
-    std::cout << "Mixed test - Reads: " << read_success.load() << ", Writes: " << write_success.load() << ", Final size: " << table->GetSize()
-              << std::endl;
+    std::cout << "Mixed test - Reads: " << read_success.load() << ", Writes: " << write_success.load() << ", Final size: " << table->GetSize() << std::endl;
 }
 
 // 压力测试 - 持续的高并发操作
@@ -467,9 +471,8 @@ TEST_F( HashTableTest, StressTest ) {
         t.join();
     }
 
-    std::cout << "Stress test completed: " << total_operations.load() << " operations (" << add_operations.load() << " adds, "
-              << get_operations.load() << " gets, " << set_operations.load() << " sets) in " << duration_seconds
-              << " seconds. Final size: " << table->GetSize() << std::endl;
+    std::cout << "Stress test completed: " << total_operations.load() << " operations (" << add_operations.load() << " adds, " << get_operations.load() << " gets, " << set_operations.load()
+              << " sets) in " << duration_seconds << " seconds. Final size: " << table->GetSize() << std::endl;
     EXPECT_GT( total_operations.load(), 0 );
 }
 

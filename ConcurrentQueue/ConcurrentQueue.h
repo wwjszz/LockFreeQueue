@@ -84,7 +84,8 @@ private:
 
 public:
     constexpr explicit FastQueue( std::size_t InSize, BlockManagerType& InBlockManager, const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
-        : Base( InAllocator ), BlockManager( InBlockManager ) {
+        : Base( InAllocator ), BlockManager( InBlockManager ), IndexEntryAllocatorPair( 0, IndexEntryAllocatorType( InAllocator ) ),
+          IndexEntryArrayAllocatorPair( 0, IndexEntryArrayAllocatorType( InAllocator ) ) {
         std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
             InitialSize = 2;
@@ -643,7 +644,9 @@ private:
     using IndexEntryPointerAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntry*>;
 
 public:
-    constexpr SlowQueue( std::size_t InSize, BlockManagerType& InBlockManager ) : IndexEntryArrayAllocatorPair( InBlockManager, ValueInitTag{} ) {
+    constexpr SlowQueue( std::size_t InSize, BlockManagerType& InBlockManager, const ValueAllocatorType& InAllocator = ValueAllocatorType{} )
+        : Base( InAllocator ), IndexEntryAllocatorPair( ValueInitTag{}, IndexEntryAllocatorType( InAllocator ) ),
+          IndexEntryArrayAllocatorPair( InBlockManager, IndexEntryArrayAllocatorType( InAllocator ) ), IndexEntryPointerAllocatorPair( 0, IndexEntryPointerAllocatorType( InAllocator ) ) {
         std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
             InitialSize = 2;

@@ -7,12 +7,14 @@
 
 #include <atomic>
 
+#include "common/CompressPair.h"
+#include "common/allocator.h"
 #include "common/common.h"
-#include "common/memory.h"
 #include "common/utility.h"
 
+#if HAKLE_CPP_VERSION < 20
 #include <assert.h>
-#include <list>
+#endif
 
 namespace hakle {
 
@@ -75,7 +77,6 @@ concept AtomicIsLockFree = std::atomic<T>::is_always_lock_free;
 
 template <class T>
 concept IsSupportHash = requires( T Key ) { core::Hash( Key ); };
-
 #endif
 
 enum class HashTableStatus {
@@ -85,34 +86,35 @@ enum class HashTableStatus {
 };
 
 // TODO: more useful
-template <HAKLE_CONCEPT( IsSupportHash ) TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_SIZE, class Allocator = HakleAllocator<Pair<TKey, TValue>>>
+template <HAKLE_CONCEPT( IsSupportHash ) TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_SIZE,
+          class Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
 class HashTable {
-public:
+private:
     struct HashNode;
 
-    using AllocatorType   = Allocator;
-    using AllocatorTraits = typename HakeAllocatorTraits<AllocatorType>;
+    using PairAllocatorType   = Allocator;
+    using PairAllocatorTraits = HakeAllocatorTraits<PairAllocatorType>;
 
-    using NodeAllocatorType   = typename AllocatorTraits::template RebindAlloc<HashNode>;
-    using NodeAllocatorTraits = typename AllocatorTraits::template RebindTraits<HashNode>;
+    using NodeAllocatorType   = PairAllocatorTraits::template RebindAlloc<HashNode>;
+    using NodeAllocatorTraits = PairAllocatorTraits::template RebindTraits<HashNode>;
 
-    constexpr HashTable() {
+public:
+    using Entry = Pair<std::atomic<TKey>, std::atomic<TValue>>;
+
+    constexpr HashTable( const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ) {
 #if HAKLE_CPP_VERSION < 20
         assert( std::atomic<TValue>{}.is_lock_free() );
 #endif
 
-        HashNode* Temp = HAKLE_NEW( HashNode, INITIAL_HASH_SIZE );
-        if ( !Temp ) {
-            throw std::bad_alloc();
-        }
-        MainHash().store( Temp, std::memory_order_relaxed );
+        HashNode* Node = CreateNewHashNode( INITIAL_HASH_SIZE );
+        MainHash().store( Node, std::memory_order_relaxed );
     }
 
     HAKLE_CPP20_CONSTEXPR ~HashTable() {
         auto CurrentHash = MainHash().load( std::memory_order_relaxed );
         while ( CurrentHash != nullptr ) {
             auto Prev = CurrentHash->Prev;
-            HAKLE_DELETE( CurrentHash );
+            DeleteHashNode( CurrentHash );
             CurrentHash = Prev;
         }
     }
@@ -143,7 +145,7 @@ public:
     constexpr bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
         if ( Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash ) ) {
-            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            OutValue = CurrentEntry->Second.load( std::memory_order_acquire );
             return true;
         }
         return false;
@@ -154,7 +156,7 @@ public:
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
         if ( CurrentEntry != nullptr ) {
-            CurrentEntry->Value.store( Value, std::memory_order_release );
+            CurrentEntry->Second.store( Value, std::memory_order_release );
             return true;
         }
 
@@ -168,7 +170,7 @@ public:
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
         if ( CurrentEntry != nullptr ) {
-            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            OutValue = CurrentEntry->Second.load( std::memory_order_acquire );
             return HashTableStatus::GET_SUCCESS;
         }
 
@@ -182,15 +184,13 @@ public:
     }
 
     template <class F, class... Args>
-#if HAKLE_CPP_VERSION >= 20
-        requires std::is_pointer_v<TValue>
-#endif
+    HAKLE_REQUIRES( std::is_pointer_v<TValue> )
     constexpr HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
         if ( CurrentEntry != nullptr ) {
-            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            OutValue = CurrentEntry->Second.load( std::memory_order_acquire );
             return HashTableStatus::GET_SUCCESS;
         }
 
@@ -211,61 +211,48 @@ public:
     HAKLE_NODISCARD constexpr std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
 
 private:
+    HashNode* CreateNewHashNode( std::size_t InCapacity ) {
+        HashNode* NewNode = NodeAllocatorTraits::Allocate( NodeAllocator() );
+        NodeAllocatorTraits::Construct( NodeAllocator(), NewNode, InCapacity );
+        NewNode->Entries = PairAllocatorTraits::Allocate( PairAllocator(), InCapacity );
+        for ( std::size_t i = 0; i < InCapacity; ++i ) {
+            PairAllocatorTraits::Construct( PairAllocator(), NewNode->Entries + i );
+            NewNode->Entries[ i ].First.store( INVALID_KEY, std::memory_order_relaxed );
+        }
+        return NewNode;
+    }
+
+    void DeleteHashNode( HashNode* Node ) {
+        std::size_t Capacity = Node->Capacity;
+        for ( std::size_t i = 0; i < Capacity; ++i ) {
+            PairAllocatorTraits::Destroy( PairAllocator(), Node->Entries + i );
+        }
+        PairAllocatorTraits::Deallocate( PairAllocator(), Node->Entries, Node->Capacity );
+        NodeAllocatorTraits::Destroy( NodeAllocator(), Node );
+        NodeAllocatorTraits::Deallocate( NodeAllocator(), Node, 1 );
+    }
+
+    // TODO: add controller
     struct HashNode {
         constexpr HashNode() = default;
-        constexpr explicit HashNode( std::size_t InCapacity ) : Capacity( InCapacity ) {
-            Entries = HAKLE_OPERATOR_NEW_ARRAY( Entry, InCapacity );
-            for ( std::size_t i = 0; i < InCapacity; ++i ) {
-                new ( Entries + i ) Entry();
-                Entries[ i ].Key.store( INVALID_KEY, std::memory_order_relaxed );
-            }
-        }
-
-        HAKLE_CPP20_CONSTEXPR ~HashNode() { HAKLE_DELETE_ARRAY( Entries, Capacity ); }
-
-        struct Entry {
-            constexpr Entry() = default;
-            constexpr Entry( Entry&& Other ) noexcept {
-                Key.store( Other.Key.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-                Value = Other.Value;
-            }
-
-            constexpr Entry& operator=( Entry&& Other ) noexcept {
-                swap( Other );
-                return *this;
-            }
-
-            constexpr void swap( Entry& Other ) noexcept {
-                if ( &Other != this ) {
-                    core::SwapRelaxed( Key, Other.Key );
-                    std::swap( Value, Other.Value );
-                }
-            }
-
-            std::atomic<TKey>   Key{ INVALID_KEY };
-            std::atomic<TValue> Value{};
-        };
+        constexpr explicit HashNode( std::size_t InCapacity ) noexcept : Capacity( InCapacity ) {}
 
         HashNode*   Prev{ nullptr };
         std::size_t Capacity{ 0 };
         Entry*      Entries{ nullptr };
     };
 
-    using Entry = typename HashNode::Entry;
-
     constexpr Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
-        assert( CurrentMainHash != nullptr );
-
-        std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
+        std::size_t HashId = core::Hash( Key );
         for ( HashNode* CurrentHash = CurrentMainHash; CurrentHash != nullptr; CurrentHash = CurrentHash->Prev ) {
             std::size_t Index = HashId;
 
             while ( true ) {
                 Index &= CurrentHash->Capacity - 1;
 
-                TKey CurrentKey = CurrentHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
+                TKey CurrentKey = CurrentHash->Entries[ Index ].First.load( std::memory_order_relaxed );
                 if ( CurrentKey == Key ) {
-                    TValue CurrentValue = CurrentHash->Entries[ Index ].Value.load( std::memory_order_acquire );
+                    TValue CurrentValue = CurrentHash->Entries[ Index ].Second.load( std::memory_order_acquire );
 
                     if ( CurrentHash != CurrentMainHash ) {
                         Index                          = HashId;
@@ -274,8 +261,8 @@ private:
                         while ( true ) {
                             Index &= MainCapacity - 1;
                             auto Empty = INVALID_KEY;
-                            if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
-                                CurrentMainHash->Entries[ Index ].Value.store( CurrentValue, std::memory_order_release );
+                            if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+                                CurrentMainHash->Entries[ Index ].Second.store( CurrentValue, std::memory_order_release );
                                 break;
                             }
                             ++Index;
@@ -307,7 +294,7 @@ private:
                     while ( NewCount >= NewCapacity >> 1 ) {
                         NewCount <<= 1;
                     }
-                    HashNode* NewHash = HAKLE_NEW( HashNode, NewCapacity );
+                    HashNode* NewHash = CreateNewHashNode( NewCapacity );
                     if ( NewHash == nullptr ) {
                         EntriesCount.fetch_sub( 1, std::memory_order_relaxed );
                         return false;
@@ -326,11 +313,11 @@ private:
                 while ( true ) {
                     Index &= CurrentMainHash->Capacity - 1;
 
-                    TKey CurrentKey = CurrentMainHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
+                    TKey CurrentKey = CurrentMainHash->Entries[ Index ].First.load( std::memory_order_relaxed );
                     if ( CurrentKey == INVALID_KEY ) {
                         TKey Empty = INVALID_KEY;
-                        if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
-                            CurrentMainHash->Entries[ Index ].Value.store( InValue, std::memory_order_release );
+                        if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
+                            CurrentMainHash->Entries[ Index ].Second.store( InValue, std::memory_order_release );
                             break;
                         }
                     }
@@ -344,24 +331,22 @@ private:
         }
     }
 
-    std::atomic<std::size_t> EntriesCount{ 0 };
-    // std::atomic<HashNode*>                        MainHash{ nullptr };
-    // std::atomic_flag                              HashResizeInProgressFlag{};
-    CompressPair<std::atomic_flag, AllocatorType> PairAllocatorPair{};
-    CompressPair<HashNode*, NodeAllocatorType>    NodeAllocatorPair{};
+    std::atomic<std::size_t>                                EntriesCount{ 0 };
+    CompressPair<std::atomic_flag, PairAllocatorType>       PairAllocatorPair{};
+    CompressPair<std::atomic<HashNode*>, NodeAllocatorType> NodeAllocatorPair{};
 
-    constexpr AllocatorType&     PairAllocator() noexcept { return PairAllocatorPair.Second(); }
+    constexpr PairAllocatorType& PairAllocator() noexcept { return PairAllocatorPair.Second(); }
     constexpr NodeAllocatorType& NodeAllocator() noexcept { return NodeAllocatorPair.Second(); }
 
-    constexpr const AllocatorType&     PairAllocator() const noexcept { return PairAllocatorPair.Second(); }
+    constexpr const PairAllocatorType& PairAllocator() const noexcept { return PairAllocatorPair.Second(); }
     constexpr const NodeAllocatorType& NodeAllocator() const noexcept { return NodeAllocatorPair.Second(); }
 
     // producer only fields
-    constexpr std::atomic_flag& HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
-    constexpr HashNode*&        MainHash() noexcept { return NodeAllocatorPair.First(); }
+    constexpr std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
+    constexpr std::atomic<HashNode*>& MainHash() noexcept { return NodeAllocatorPair.First(); }
 
-    HAKLE_NODISCARD constexpr const std::atomic_flag& HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.First(); }
-    HAKLE_NODISCARD constexpr const HashNode*&        MainHash() const noexcept { return NodeAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::atomic_flag&       HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::atomic<HashNode*>& MainHash() const noexcept { return NodeAllocatorPair.First(); }
 };
 
 }  // namespace hakle

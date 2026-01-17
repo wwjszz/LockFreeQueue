@@ -285,8 +285,8 @@ public:
     }
 
 private:
-    BlockPool<BlockType> Pool;
-    FreeList<BlockType>  FreeList;
+    BlockPool<BlockType, AllocatorType> Pool;
+    FreeList<BlockType, AllocatorType>  FreeList;
 };
 
 template <class T, std::size_t BLOCK_SIZE>

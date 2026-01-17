@@ -111,6 +111,11 @@ public:
     using SizeType       = size_t;
     using DifferenceType = std::ptrdiff_t;
 
+    constexpr HakleAllocator() noexcept = default;
+
+    template <class Up>
+    explicit constexpr HakleAllocator( const HakleAllocator<Up>& ) noexcept {}
+
     ~HakleAllocator() { printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() ); }
 
     static std::atomic<int> AllocateCount;
@@ -170,6 +175,11 @@ public:
     using ConstReference = const Tp&;
     using SizeType       = size_t;
     using DifferenceType = std::ptrdiff_t;
+
+    constexpr HakleAllocator() noexcept = default;
+
+    template <class Up>
+    explicit constexpr HakleAllocator( const HakleAllocator<Up>& ) noexcept {}
 
     static constexpr Pointer Allocate() { return HAKLE_OPERATOR_NEW( Tp ); }
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
