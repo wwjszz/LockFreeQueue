@@ -247,7 +247,7 @@ public:
 
     using AllocMode = typename BaseManager::AllocMode;
 
-    constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
+    constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), List( InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
 
     constexpr BlockType* RequisitionBlock( AllocMode Mode ) override {
@@ -256,7 +256,7 @@ public:
             return Block;
         }
 
-        Block = FreeList.TryGet();
+        Block = List.TryGet();
         if ( Block != nullptr ) {
             return Block;
         }
@@ -275,18 +275,18 @@ public:
         }
     }
 
-    constexpr void ReturnBlock( BlockType* InBlock ) override { FreeList.Add( InBlock ); }
+    constexpr void ReturnBlock( BlockType* InBlock ) override { List.Add( InBlock ); }
     constexpr void ReturnBlocks( BlockType* InBlock ) override {
         while ( InBlock != nullptr ) {
             BlockType* Next = InBlock->Next;
-            FreeList.Add( InBlock );
+            List.Add( InBlock );
             InBlock = Next;
         }
     }
 
 private:
     BlockPool<BlockType, AllocatorType> Pool;
-    FreeList<BlockType, AllocatorType>  FreeList;
+    FreeList<BlockType, AllocatorType>  List;
 };
 
 template <class T, std::size_t BLOCK_SIZE>

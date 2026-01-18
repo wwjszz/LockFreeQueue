@@ -68,8 +68,8 @@ struct ExceptionTest2 {
 TEST( SlowQueueLeaks, StressTest ) {
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 68;    // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };        // 所有消费者结果累加
+    const int                       NUM_CONSUMERS = 68;      // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
 
@@ -121,7 +121,7 @@ TEST( SlowQueueLeaks, StressTest ) {
     }
 }
 
-TEST(SlowQueueLeaks, EnqueueExceptionTest) {
+TEST( SlowQueueLeaks, EnqueueExceptionTest ) {
     using ExceptionBlock       = HakleCounterBlock<ExceptionTest, kBlockSize>;
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = SlowQueue<ExceptionTest, kBlockSize, HakleAllocator<ExceptionTest>, ExceptionBlock>;
@@ -130,8 +130,8 @@ TEST(SlowQueueLeaks, EnqueueExceptionTest) {
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 32;     // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };        // 所有消费者结果累加
+    const int                       NUM_CONSUMERS = 32;      // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
     std::atomic<int>                failed{ 0 };
@@ -146,9 +146,9 @@ TEST(SlowQueueLeaks, EnqueueExceptionTest) {
         for ( std::size_t i = 0; i < N; ++i ) {
             // a[ 0 ] = i % 100;
             try {
-                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a + 10 * (i % 10), 10 ) ) {
-                   printf( "enqueue failed\n" );
-               }
+                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a + 10 * ( i % 10 ), 10 ) ) {
+                    printf( "enqueue failed\n" );
+                }
                 // if ( !queue.Enqueue<AllocMode::CanAlloc>( a[ 0 ] ) ) {
                 //     printf( "enqueue failed\n" );
                 // }
@@ -199,10 +199,12 @@ TEST(SlowQueueLeaks, EnqueueExceptionTest) {
         t.join();
     }
 
-    EXPECT_EQ( total_sum, N * (109) * 45 / 10 );
+    delete[] a;
+
+    EXPECT_EQ( total_sum, N * ( 109 ) * 45 / 10 );
 }
 
-TEST(SlowQueueLeaks, DequeueExceptionTest) {
+TEST( SlowQueueLeaks, DequeueExceptionTest ) {
     using ExceptionBlock       = HakleCounterBlock<ExceptionTest2, kBlockSize>;
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = SlowQueue<ExceptionTest2, kBlockSize>;
@@ -211,8 +213,8 @@ TEST(SlowQueueLeaks, DequeueExceptionTest) {
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 80000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 68;   // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };       // 所有消费者结果累加
+    const int                       NUM_CONSUMERS = 68;     // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };         // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
     std::atomic<int>                failed{ 0 };
@@ -272,17 +274,18 @@ TEST(SlowQueueLeaks, DequeueExceptionTest) {
         t.join();
     }
 
+    delete[] a;
+
     // 验证：总和是否正确
     unsigned long long expected_sum = 99 * 50 * N;
     EXPECT_EQ( failed.load(), 0 );
-    EXPECT_EQ(  total_sum.load(), expected_sum - N * 45 );
+    EXPECT_EQ( total_sum.load(), expected_sum - N * 45 );
 
     // 验证队列为空
     EXPECT_EQ( queue.Size(), 0 );
 }
 
-
-int main(int argc, char** argv) {
+int main( int argc, char** argv ) {
     ::testing::InitGoogleTest( &argc, argv );
 
     // 打印所有测试开始和结束（可选）

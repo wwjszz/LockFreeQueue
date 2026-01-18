@@ -251,6 +251,8 @@ TEST( SlowQueueTest, MultiConsumerStressTest ) {
         t.join();
     }
 
+    delete[] a;
+
     // 验证：总和是否正确
     unsigned long long expected_sum = 99 * 50 * N;
     EXPECT_EQ( total_sum.load(), expected_sum );
@@ -287,8 +289,8 @@ TEST( SlowQueueTest, MultiConsumerStressTestWithException ) {
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 80000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 68;   // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };       // 所有消费者结果累加
+    const int                       NUM_CONSUMERS = 68;     // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };         // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
     std::atomic<int>                failed{ 0 };
@@ -348,6 +350,8 @@ TEST( SlowQueueTest, MultiConsumerStressTestWithException ) {
     for ( auto& t : consumers ) {
         t.join();
     }
+
+    delete[] a;
 
     // 验证：总和是否正确
     // unsigned long long expected_sum = 101 * 50 * N;

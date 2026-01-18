@@ -138,8 +138,8 @@ TEST( FastQueueLeaks, StressTestNoBulk ) {
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
         for ( int i = 0; i < N; ++i ) {
-            for (int j = 0; j < 100; ++j) {
-                if (!queue.Enqueue<FastAllocMode::CanAlloc>( a[0] )) {
+            for ( int j = 0; j < 100; ++j ) {
+                if ( !queue.Enqueue<FastAllocMode::CanAlloc>( a[ 0 ] ) ) {
                     printf( "enqueue failed!!!\n" );
                 }
             }
@@ -185,8 +185,8 @@ TEST( FastQueueLeaks, EnqueueExceptionTest ) {
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 32;     // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };        // 所有消费者结果累加
+    const int                       NUM_CONSUMERS = 32;      // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
     std::atomic<int>                failed{ 0 };
@@ -201,9 +201,9 @@ TEST( FastQueueLeaks, EnqueueExceptionTest ) {
         for ( std::size_t i = 0; i < N; ++i ) {
             // a[ 0 ] = i % 100;
             try {
-                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a + 10 * (i % 10), 10 ) ) {
-                   printf( "enqueue failed\n" );
-               }
+                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a + 10 * ( i % 10 ), 10 ) ) {
+                    printf( "enqueue failed\n" );
+                }
                 // if ( !queue.Enqueue<AllocMode::CanAlloc>( a[ 0 ] ) ) {
                 //     printf( "enqueue failed\n" );
                 // }
@@ -254,7 +254,9 @@ TEST( FastQueueLeaks, EnqueueExceptionTest ) {
         t.join();
     }
 
-    EXPECT_EQ( total_sum, N * (109) * 45 / 10 );
+    delete[] a;
+
+    EXPECT_EQ( total_sum, N * ( 109 ) * 45 / 10 );
 }
 
 TEST( FastQueueLeaks, DequeueExceptionTest ) {
@@ -326,6 +328,8 @@ TEST( FastQueueLeaks, DequeueExceptionTest ) {
     for ( auto& t : consumers ) {
         t.join();
     }
+
+    delete[] a;
 
     // 验证：总和是否正确
     unsigned long long expected_sum = 99 * 50 * N;

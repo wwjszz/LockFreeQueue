@@ -252,6 +252,8 @@ TEST( FastQueueTest, MultiConsumerStressTest ) {
         t.join();
     }
 
+    delete[] a;
+
     // 验证：总和是否正确
     unsigned long long expected_sum = 99 * 50 * N;
     EXPECT_EQ( total_sum.load(), expected_sum );
@@ -350,6 +352,8 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
     for ( auto& t : consumers ) {
         t.join();
     }
+
+    delete[] a;
 
     EXPECT_EQ( failed.load(), 0 );
     printf( "count: %llu\n", count.load() );

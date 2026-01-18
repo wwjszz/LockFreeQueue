@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <bit>
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
 #include <cstdio>
 #endif
