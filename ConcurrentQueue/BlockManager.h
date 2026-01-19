@@ -289,10 +289,10 @@ private:
     FreeList<BlockType, AllocatorType>  List;
 };
 
-template <class T, std::size_t BLOCK_SIZE>
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleFlagsBlock<T, BLOCK_SIZE>>>
 using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>>;
 
-template <class T, std::size_t BLOCK_SIZE>
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>>
 using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>>;
 
 }  // namespace hakle

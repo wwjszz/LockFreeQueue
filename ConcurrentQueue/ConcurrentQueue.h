@@ -7,20 +7,38 @@
 
 #include <algorithm>
 #include <atomic>
+#include <concepts>
 #include <cstddef>
 #include <type_traits>
 
 #include "BlockManager.h"
+#include "ConcurrentQueue/Block.h"
 #include "common/CompressPair.h"
+#include "common/allocator.h"
 #include "common/common.h"
 #include "common/utility.h"
 
 namespace hakle {
 
+#if HAKLE_CPP_VERSION >= 20
+template <class Traits>
+concept IsConcurrentQueueTraits = requires {
+    { Traits::BlockSize } -> std::convertible_to<std::size_t>;
+    { Traits::InitialBlockPoolSize } -> std::convertible_to<std::size_t>;
+
+    requires IsAllocator<typename Traits::AllocatorType> && IsAllocator<typename Traits::ExplicitAllocatorType> && IsAllocator<typename Traits::ImplicitAllocatorType>;
+    requires IsBlock<typename Traits::ExplicitBlockType> && IsBlock<typename Traits::ImplicitBlockType>;
+};
+#endif
+
+struct QueueTypelessBase {
+    virtual ~QueueTypelessBase() = default;
+};
+
 // TODO: manager traits
 template <class T, std::size_t BLOCK_SIZE, class Allocator, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
 HAKLE_REQUIRES( CheckBlockSize<BLOCK_SIZE, BLOCK_TYPE>&& CheckBlockManager<BLOCK_TYPE, BLOCK_MANAGER_TYPE> )
-struct QueueBase {
+struct QueueBase : public QueueTypelessBase {
 public:
     using BlockManagerType                 = BLOCK_MANAGER_TYPE;
     using BlockType                        = BLOCK_TYPE;
@@ -1144,9 +1162,93 @@ private:
     HAKLE_NODISCARD constexpr const std::size_t&   IndexEntriesSize() const noexcept { return IndexEntryPointerAllocatorPair.First(); }
 };
 
-struct ProducerToken {};
+template <class T, HAKLE_CONCEPT( IsAllocator ) Allocator>
+struct ConcurrentQueueDefaultTraits {
+    static constexpr std::size_t BlockSize            = 32;
+    static constexpr std::size_t InitialBlockPoolSize = 64;
 
-struct ConsumerToken {};
+    using AllocatorType = Allocator;
+
+    using ExplicitBlockType = HakleFlagsBlock<T, BlockSize>;
+    using ImplicitBlockType = HakleCounterBlock<T, BlockSize>;
+
+    using ExplicitAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ExplicitBlockType>;
+    using ImplicitAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ImplicitBlockType>;
+};
+
+template <class T, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsConcurrentQueueTraits ) Traits = ConcurrentQueueDefaultTraits<T, Allocator>>
+class ConcurrentQueue {
+public:
+    using Traits::BlockSize;
+
+    using typename Traits::ExplicitBlockType;
+    using typename Traits::ImplicitBlockType;
+
+    using typename Traits::AllocatorType;
+    using typename Traits::ExplicitAllocatorType;
+    using typename Traits::ImplicitAllocatorType;
+
+    // TODO: Currently, we only support a fixed block manager; custom managers will be supported in the future.
+    using Traits::InitialBlockPoolSize;
+    using ExplicitBlockManager = HakleFlagsBlockManager<T, BlockSize, ExplicitAllocatorType>;
+    using ImplicitBlockManager = HakleCounterBlockManager<T, BlockSize, ImplicitAllocatorType>;
+
+private:
+    struct ProducerTypelessBase;
+
+public:
+    struct ProducerToken {
+        ProducerToken( ProducerToken&& Other ) noexcept : Producer( Other.Producer ) {
+            Other.Producer = nullptr;
+            if ( Producer != nullptr ) {
+                Producer->Token = this;
+            }
+        }
+
+        ~ProducerToken() {
+            if ( Producer != nullptr ) {
+                Producer->Token = nullptr;
+                Producer->Inactive.store( true, std::memory_order_release );
+            }
+        }
+
+        ProducerToken( const ProducerToken& )            = delete;
+        ProducerToken& operator=( const ProducerToken& ) = delete;
+
+        ProducerToken& operator=( ProducerToken&& Other ) noexcept {
+            swap( Other );
+            return *this;
+        }
+
+        void swap( ProducerToken& Other ) noexcept {
+            using std::swap;
+            swap( Producer, this->Producer );
+            if ( Producer != nullptr ) {
+                Producer->Token = this;
+            }
+            if ( Other.Producer != nullptr ) {
+                Other.Producer->Token = &Other;
+            }
+        }
+
+        bool Valid() const noexcept { return Producer != nullptr; }
+
+    protected:
+        ProducerTypelessBase* Producer;
+    };
+
+    struct ConsumerToken {};
+
+private:
+    struct ProducerTypelessBase {
+        ProducerTypelessBase* Next{ nullptr };
+        std::atomic<bool>     Inactive{ false };
+        QueueTypelessBase*    Queue{ nullptr };
+        ProducerToken*        Token{ nullptr };
+
+        virtual ~ProducerTypelessBase() = default;
+    };
+};
 
 }  // namespace hakle
 
