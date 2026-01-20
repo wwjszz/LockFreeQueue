@@ -2,6 +2,7 @@
 // Created by admin on 25-11-24.
 //
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -19,13 +20,13 @@ using namespace hakle;
 struct MyNode : public FreeListNode<MyNode> {};
 
 // 测试用的键值类型
-using TestHashTable = HashTable<uint32_t, uint32_t, UINT32_MAX, 8>;
+using TestHashTable = HashTable<uint32_t, uint32_t, 8>;
 
 class HashTableTest : public ::testing::Test {
 protected:
     void SetUp() override {
         FreeList<MyNode> t;
-        table = new TestHashTable();
+        table = new TestHashTable( UINT32_MAX );
     }
 
     void TearDown() override { delete table; }
@@ -482,8 +483,8 @@ TEST_F( HashTableTest, GetOrAddByFunc ) {
     const int num_operations = 100;
 
     // 使用指针类型的哈希表
-    using PtrHashTable = HashTable<uint32_t, uint32_t*, UINT32_MAX, 8>;
-    PtrHashTable ptrTable;
+    using PtrHashTable = HashTable<uint32_t, uint32_t*, 8>;
+    PtrHashTable ptrTable( UINT32_MAX );
 
     std::vector<std::thread> threads;
     std::vector<uint32_t*>   allocated_pointers;

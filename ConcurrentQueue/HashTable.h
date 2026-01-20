@@ -6,6 +6,7 @@
 #define HashTable_H
 
 #include <atomic>
+#include <concepts>
 
 #include "common/CompressPair.h"
 #include "common/allocator.h"
@@ -63,11 +64,10 @@ namespace core {
         static_assert( std::is_integral<T>::value, "HashImpl<T> only supports integral types" );
     };
 
-    template <class T>
-    HAKLE_REQUIRES( std::is_integral_v<T> )
-    T Hash( T Key ) noexcept {
-        return HashImpl<T>::Hash( Key );
-    }
+    template <HAKLE_CONCEPT( std::integral ) T>
+    struct Hash {
+        constexpr T operator()( T X ) const noexcept { return HashImpl<T>::Hash( X ); }
+    };
 
 }  // namespace core
 
@@ -75,8 +75,10 @@ namespace core {
 template <class T>
 concept AtomicIsLockFree = std::atomic<T>::is_always_lock_free;
 
-template <class T>
-concept IsSupportHash = requires( T Key ) { core::Hash( Key ); };
+template <class T, class Hash>
+concept IsSupportHash = requires( T Key, Hash hash ) {
+    { hash( Key ) } -> std::integral;
+};
 #endif
 
 enum class HashTableStatus {
@@ -86,8 +88,9 @@ enum class HashTableStatus {
 };
 
 // TODO: more useful
-template <HAKLE_CONCEPT( IsSupportHash ) TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_SIZE,
+template <class TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, std::size_t INITIAL_HASH_SIZE, class HashType = core::Hash<TKey>,
           class Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
+HAKLE_REQUIRES( IsSupportHash<TKey, HashType> )
 class HashTable {
 private:
     struct HashNode;
@@ -101,7 +104,7 @@ private:
 public:
     using Entry = Pair<std::atomic<TKey>, std::atomic<TValue>>;
 
-    constexpr HashTable( const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ) {
+    explicit constexpr HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ), INVALID_KEY( InValidKey ) {
 #if HAKLE_CPP_VERSION < 20
         assert( std::atomic<TValue>{}.is_lock_free() );
 #endif
@@ -124,6 +127,9 @@ public:
     constexpr HashTable( HashTable&& Other ) noexcept {
         core::SwapRelaxed( EntriesCount, Other.EntriesCount );
         core::SwapRelaxed( MainHash(), Other.MainHash() );
+        using std::swap;
+        swap( Hash, Other.Hash );
+        swap( INVALID_KEY, Other.INVALID_KEY );
     }
 
     constexpr HashTable& operator=( const HashTable& Other ) = delete;
@@ -243,7 +249,7 @@ private:
     };
 
     constexpr Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
-        std::size_t HashId = core::Hash( Key );
+        std::size_t HashId = Hash( Key );
         for ( HashNode* CurrentHash = CurrentMainHash; CurrentHash != nullptr; CurrentHash = CurrentHash->Prev ) {
             std::size_t Index = HashId;
 
@@ -308,7 +314,7 @@ private:
 
             // if there is enough space, add the new entry
             if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) + ( CurrentMainHash->Capacity >> 2 ) ) {
-                std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
+                std::size_t HashId = Hash( Key );
                 std::size_t Index  = HashId;
                 while ( true ) {
                     Index &= CurrentMainHash->Capacity - 1;
@@ -334,6 +340,10 @@ private:
     std::atomic<std::size_t>                                EntriesCount{ 0 };
     CompressPair<std::atomic_flag, PairAllocatorType>       PairAllocatorPair{};
     CompressPair<std::atomic<HashNode*>, NodeAllocatorType> NodeAllocatorPair{};
+
+    // TODO: use compress pair
+    HashType Hash{};
+    TKey     INVALID_KEY{};
 
     constexpr PairAllocatorType& PairAllocator() noexcept { return PairAllocatorPair.Second(); }
     constexpr NodeAllocatorType& NodeAllocator() noexcept { return NodeAllocatorPair.Second(); }

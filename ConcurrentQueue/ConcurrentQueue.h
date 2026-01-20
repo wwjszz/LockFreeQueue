@@ -9,16 +9,26 @@
 #include <atomic>
 #include <concepts>
 #include <cstddef>
+#include <functional>
+#include <thread>
 #include <type_traits>
 
 #include "BlockManager.h"
 #include "ConcurrentQueue/Block.h"
+#include "ConcurrentQueue/HashTable.h"
 #include "common/CompressPair.h"
 #include "common/allocator.h"
 #include "common/common.h"
 #include "common/utility.h"
 
 namespace hakle {
+
+namespace details {
+    using thread_id_t = std::thread::id;
+    static const thread_id_t invalid_thread_id;
+    inline thread_id_t       thread_id() noexcept { return std::this_thread::get_id(); }
+    using thread_hash = std::hash<std::thread::id>;
+}  // namespace details
 
 #if HAKLE_CPP_VERSION >= 20
 template <class Traits>
@@ -1166,6 +1176,7 @@ template <class T, HAKLE_CONCEPT( IsAllocator ) Allocator>
 struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t BlockSize            = 32;
     static constexpr std::size_t InitialBlockPoolSize = 64;
+    static constexpr std::size_t InitialHashSize      = 32;
 
     using AllocatorType = Allocator;
 
@@ -1180,6 +1191,7 @@ template <class T, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsConcurr
 class ConcurrentQueue {
 public:
     using Traits::BlockSize;
+    using Traits::InitialHashSize;
 
     using typename Traits::ExplicitBlockType;
     using typename Traits::ImplicitBlockType;
@@ -1192,6 +1204,9 @@ public:
     using Traits::InitialBlockPoolSize;
     using ExplicitBlockManager = HakleFlagsBlockManager<T, BlockSize, ExplicitAllocatorType>;
     using ImplicitBlockManager = HakleCounterBlockManager<T, BlockSize, ImplicitAllocatorType>;
+
+    using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManager>;
+    using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManager>;
 
 private:
     struct ProducerTypelessBase;
@@ -1237,7 +1252,35 @@ public:
         ProducerTypelessBase* Producer;
     };
 
-    struct ConsumerToken {};
+    struct ConsumerToken {
+        ConsumerToken( ConsumerToken&& Other ) noexcept
+            : InitialOffeset( Other.InitialOffeset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ),
+              DesiredProducer( Other.DesiredProducer ) {}
+
+        ConsumerToken& operator=( ConsumerToken&& Other ) noexcept {
+            swap( Other );
+            return *this;
+        }
+
+        void swap( ConsumerToken& Other ) noexcept {
+            using std::swap;
+            swap( InitialOffeset, Other.InitialOffeset );
+            swap( DesiredProducer, Other.DesiredProducer );
+            swap( LastKnownGlobalOffset, Other.LastKnownGlobalOffset );
+            swap( CurrentProducer, Other.CurrentProducer );
+            swap( DesiredProducer, Other.DesiredProducer );
+        }
+
+        ConsumerToken( const ConsumerToken& )            = delete;
+        ConsumerToken& operator=( const ConsumerToken& ) = delete;
+
+    private:
+        std::uint32_t         InitialOffeset;
+        std::uint32_t         LastKnownGlobalOffset;
+        std::uint32_t         ItemsConsumed;
+        ProducerTypelessBase* CurrentProducer;
+        ProducerTypelessBase* DesiredProducer;
+    };
 
 private:
     struct ProducerTypelessBase {
@@ -1248,6 +1291,8 @@ private:
 
         virtual ~ProducerTypelessBase() = default;
     };
+
+    HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap;
 };
 
 }  // namespace hakle
