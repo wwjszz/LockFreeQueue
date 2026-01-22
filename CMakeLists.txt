@@ -2,8 +2,9 @@
 project(LockFreeStructures CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -O0 -ggdb")
@@ -115,6 +116,8 @@ target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
 target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 
+
+add_executable(concurrentqueuetest tests/concurrentqueuetest.cpp)
 
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)

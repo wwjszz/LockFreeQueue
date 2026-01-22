@@ -15,6 +15,8 @@
 // BlockPool + FreeList
 namespace hakle {
 
+enum class AllocMode;
+
 #ifndef HAKLE_USE_CONCEPT
 template <class BLOCK_TYPE>
 struct BlockTraits {
@@ -25,7 +27,6 @@ struct BlockTraits {
     using BlockType                        = BLOCK_TYPE;
 };
 #else
-
 template <class T, template <class> class Constraint>
 concept IsAtomicWith = requires {
     typename T::value_type;
@@ -46,7 +47,7 @@ concept IsFreeListNode = requires( T& t ) {
 };
 
 template <class T>
-concept IsBlockManager = requires( T& t, typename T::AllocMode Mode, typename T::BlockType* p ) {
+concept IsBlockManager = requires( T& t, AllocMode Mode, typename T::BlockType* p ) {
     { t.RequisitionBlock( Mode ) } -> std::same_as<typename T::BlockType*>;
     t.ReturnBlock( p );
     t.ReturnBlocks( p );
@@ -56,6 +57,12 @@ template <class BLOCK_TYPE, class T>
 concept CheckBlockManager = IsBlock<BLOCK_TYPE> && std::same_as<BLOCK_TYPE, typename T::BlockType>;
 
 #endif
+
+// TODO: position?
+enum class AllocMode {
+    CanAlloc,
+    CannotAlloc
+};
 
 struct MemoryBase {
     bool HasOwner{ false };
@@ -206,7 +213,7 @@ public:
     using AllocatorType        = ALLOCATOR_TYPE;
     using BlockAllocatorTraits = HakeAllocatorTraits<AllocatorType>;
     using BlockType            = BLOCK_TYPE;
-#if HAKLE_CPP_VERSION >= 20
+#ifdef HAKLE_USE_CONCEPT
     constexpr static std::size_t BlockSize = BlockType::BlockSize;
     using ValueType                        = typename BlockType::ValueType;
 #else
@@ -219,7 +226,7 @@ public:
     constexpr explicit BlockManagerBase( const AllocatorType& InAllocator = AllocatorType{} ) : Base( InAllocator ) {}
     virtual ~BlockManagerBase() = default;
 
-    enum class AllocMode { CanAlloc, CannotAlloc };
+    using AllocMode = hakle::AllocMode;
 
     virtual HAKLE_CPP20_CONSTEXPR BlockType* RequisitionBlock( AllocMode InMode ) = 0;
     virtual HAKLE_CPP20_CONSTEXPR void       ReturnBlocks( BlockType* InBlock )   = 0;

@@ -13,7 +13,7 @@
 #include "common/common.h"
 #include "common/utility.h"
 
-#if HAKLE_CPP_VERSION < 20
+#ifndef HAKLE_USE_CONCEPT
 #include <assert.h>
 #endif
 
@@ -71,7 +71,7 @@ namespace core {
 
 }  // namespace core
 
-#if HAKLE_CPP_VERSION >= 20
+#ifdef HAKLE_USE_CONCEPT
 template <class T>
 concept AtomicIsLockFree = std::atomic<T>::is_always_lock_free;
 
@@ -98,14 +98,14 @@ private:
     using PairAllocatorType   = Allocator;
     using PairAllocatorTraits = HakeAllocatorTraits<PairAllocatorType>;
 
-    using NodeAllocatorType   = PairAllocatorTraits::template RebindAlloc<HashNode>;
-    using NodeAllocatorTraits = PairAllocatorTraits::template RebindTraits<HashNode>;
+    using NodeAllocatorType   = typename PairAllocatorTraits::template RebindAlloc<HashNode>;
+    using NodeAllocatorTraits = typename PairAllocatorTraits::template RebindTraits<HashNode>;
 
 public:
     using Entry = Pair<std::atomic<TKey>, std::atomic<TValue>>;
 
     explicit constexpr HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ), INVALID_KEY( InValidKey ) {
-#if HAKLE_CPP_VERSION < 20
+#ifndef HAKLE_USE_CONCEPT
         assert( std::atomic<TValue>{}.is_lock_free() );
 #endif
 

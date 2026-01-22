@@ -12,6 +12,63 @@
 
 namespace hakle {
 
+#if HAKLE_CPP_VERSION < 17
+
+#if HAKLE_CPP_VERSION < 14
+template <class T>
+struct Identity {
+    using Type = T;
+};
+
+template <class T, T... Ts>
+struct IntegerSequence {
+    using Type                        = T;
+    static constexpr std::size_t Size = sizeof...( Ts );
+};
+
+template <std::size_t... Is>
+using IndexSequence = IntegerSequence<std::size_t, Is...>;
+
+template <std::size_t N>
+struct MakeIndexSequenceImpl;
+
+template <std::size_t N>
+using MakeIndexSequence = typename MakeIndexSequenceImpl<N>::Type;
+
+template <class, class>
+struct IntegerSequenceConcat;
+
+template <std::size_t... Lhs, std::size_t... Rhs>
+struct IntegerSequenceConcat<IndexSequence<Lhs...>, IndexSequence<Rhs...>> : Identity<IndexSequence<Lhs..., ( sizeof...( Lhs ) + Rhs )...>> {};
+
+template <std::size_t N>
+struct MakeIndexSequenceImpl : IntegerSequenceConcat<MakeIndexSequence<N / 2>, MakeIndexSequence<N - N / 2>> {};
+
+template <>
+struct MakeIndexSequenceImpl<0> : Identity<IndexSequence<>> {};
+
+template <>
+struct MakeIndexSequenceImpl<1> : Identity<IndexSequence<0>> {};
+#else
+template <std::size_t... Is>
+using IndexSequence = std::index_sequence<Is...>;
+
+template <std::size_t N>
+using MakeIndexSequence = std::make_index_sequence<N>;
+#endif
+
+template <class Fn, class Tuple, std::size_t... Idx>
+constexpr decltype( auto ) ApplyImpl( Fn&& fn, Tuple&& tuple, IndexSequence<Idx...> ) {
+    return fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... );
+}
+
+template <class Fn, class Tuple>
+constexpr decltype( auto ) Apply( Fn&& fn, Tuple&& tuple ) {
+    using Indices = MakeIndexSequence<std::tuple_size<typename std::remove_reference<Tuple>::type>::value>;
+    return ApplyImpl( std::forward<Fn>( fn ), std::forward<Tuple>( tuple ), Indices{} );
+}
+#endif
+
 template <class T>
 HAKLE_REQUIRES( std::is_unsigned_v<T> )
 inline constexpr bool CircularLessThan( T a, T b ) noexcept {
@@ -75,7 +132,7 @@ struct Pair {
     using FirstType  = T1;
     using SecondType = T2;
 
-#if HAKLE_CPP_VERSION >= 20
+#ifdef HAKLE_USE_CONCEPT
     struct CheckArgs {
         static constexpr bool EnableDefault = std::is_default_constructible<FirstType>::value && std::is_default_constructible<SecondType>::value;
 
@@ -143,8 +200,13 @@ struct Pair {
         return *this;
     }
 
-    constexpr void swap( Pair& p ) noexcept( std::is_nothrow_swappable<FirstType>::value && std::is_nothrow_swappable<SecondType>::value )
-        HAKLE_REQUIRES( std::is_swappable_v<FirstType>&& std::is_swappable_v<SecondType> ) {
+    constexpr void swap( Pair& p ) noexcept(
+#if HAKLE_CPP_VERSION >= 17
+        std::is_nothrow_swappable_v<FirstType> && std::is_nothrow_swappable_v<SecondType>
+#else
+        true
+#endif
+        ) HAKLE_REQUIRES( std::is_swappable_v<FirstType>&& std::is_swappable_v<SecondType> ) {
         using std::swap;
         swap( First, p.First );
         swap( Second, p.Second );

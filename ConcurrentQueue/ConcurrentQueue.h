@@ -30,15 +30,40 @@ namespace details {
     using thread_hash = std::hash<std::thread::id>;
 }  // namespace details
 
-#if HAKLE_CPP_VERSION >= 20
-template <class Traits>
-concept IsConcurrentQueueTraits = requires {
-    { Traits::BlockSize } -> std::convertible_to<std::size_t>;
-    { Traits::InitialBlockPoolSize } -> std::convertible_to<std::size_t>;
+#ifdef HAKLE_USE_CONCEPT
+template <class Traits, class = void>
+struct HasMakeExplicitBlockManagerHelper : std::false_type {};
 
+template <class Traits>
+struct HasMakeExplicitBlockManagerHelper<Traits, std::void_t<decltype( &Traits::MakeExplicitBlockManager )>> : std::true_type {};
+
+// 检测 Traits 里有没有 MakeImplicit
+template <class Traits, class = void>
+struct HasMakeImplicitBlockManagerHelper : std::false_type {};
+
+template <class Traits>
+struct HasMakeImplicitBlockManagerHelper<Traits, std::void_t<decltype( &Traits::MakeImplicitBlockManager )>> : std::true_type {};
+
+template <class Traits>
+concept IsConcurrentQueueTraits = requires( const typename Traits::ExplicitAllocatorType& ExplicitAllocator, const typename Traits::ImplicitAllocatorType& ImplicitAllocator ) {
+    { Traits::BlockSize } -> std::convertible_to<std::size_t>;
+    { Traits::InitialHashSize } -> std::convertible_to<std::size_t>;
+
+    { Traits::MakeDefaultExplicitBlockManager( ExplicitAllocator ) } -> std::same_as<typename Traits::ExplicitBlockManagerType>;
+    { Traits::MakeDefaultImplicitBlockManager( ImplicitAllocator ) } -> std::same_as<typename Traits::ImplicitBlockManagerType>;
+
+    requires Traits::BlockSize > 0 && Traits::InitialHashSize > 0;
     requires IsAllocator<typename Traits::AllocatorType> && IsAllocator<typename Traits::ExplicitAllocatorType> && IsAllocator<typename Traits::ImplicitAllocatorType>;
     requires IsBlock<typename Traits::ExplicitBlockType> && IsBlock<typename Traits::ImplicitBlockType>;
+    requires IsBlockManager<typename Traits::ExplicitBlockManagerType> && IsBlockManager<typename Traits::ImplicitBlockManagerType>;
 };
+
+template <class Traits>
+concept HasMakeExplicitBlockManager = HasMakeExplicitBlockManagerHelper<Traits>::value;
+
+template <class Traits>
+concept HasMakeImplicitBlockManager = HasMakeImplicitBlockManagerHelper<Traits>::value;
+
 #endif
 
 struct QueueTypelessBase {
@@ -61,7 +86,7 @@ public:
     using AllocMode = typename BlockManagerType::AllocMode;
 
     constexpr explicit QueueBase( const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept : ValueAllocatorPair( nullptr, InAllocator ) {}
-    virtual HAKLE_CPP20_CONSTEXPR ~QueueBase() = default;
+    virtual HAKLE_CPP20_CONSTEXPR ~QueueBase() override = default;
 
     HAKLE_NODISCARD constexpr std::size_t Size() const noexcept {
         std::size_t Tail = TailIndex.load( std::memory_order_relaxed );
@@ -1185,10 +1210,19 @@ struct ConcurrentQueueDefaultTraits {
 
     using ExplicitAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ExplicitBlockType>;
     using ImplicitAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ImplicitBlockType>;
+
+    using ExplicitBlockManagerType = HakleFlagsBlockManager<T, BlockSize, ExplicitAllocatorType>;
+    using ImplicitBlockManagerType = HakleCounterBlockManager<T, BlockSize, ImplicitAllocatorType>;
+
+    static ExplicitBlockManagerType MakeDefaultExplicitBlockManager( const ExplicitAllocatorType& InAllocator ) { return ExplicitBlockManagerType( InitialBlockPoolSize, InAllocator ); }
+    static ImplicitBlockManagerType MakeDefaultImplicitBlockManager( const ImplicitAllocatorType& InAllocator ) { return ImplicitBlockManagerType( InitialBlockPoolSize, InAllocator ); }
+
+    static ImplicitBlockManagerType MakeExplicitBlockManager( const ExplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ImplicitBlockManagerType( BlockPoolSize, InAllocator ); }
+    static ImplicitBlockManagerType MakeImplicitBlockManager( const ExplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ImplicitBlockManagerType( BlockPoolSize, InAllocator ); }
 };
 
 template <class T, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsConcurrentQueueTraits ) Traits = ConcurrentQueueDefaultTraits<T, Allocator>>
-class ConcurrentQueue {
+class ConcurrentQueue : private Traits {
 public:
     using Traits::BlockSize;
     using Traits::InitialHashSize;
@@ -1200,13 +1234,41 @@ public:
     using typename Traits::ExplicitAllocatorType;
     using typename Traits::ImplicitAllocatorType;
 
-    // TODO: Currently, we only support a fixed block manager; custom managers will be supported in the future.
-    using Traits::InitialBlockPoolSize;
-    using ExplicitBlockManager = HakleFlagsBlockManager<T, BlockSize, ExplicitAllocatorType>;
-    using ImplicitBlockManager = HakleCounterBlockManager<T, BlockSize, ImplicitAllocatorType>;
+    using typename Traits::ExplicitBlockManagerType;
+    using typename Traits::ImplicitBlockManagerType;
+    using typename Traits::InitialBlockPoolSize;
 
-    using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManager>;
-    using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManager>;
+    using Traits::MakeDefaultExplicitBlockManager;
+    using Traits::MakeDefaultImplicitBlockManager;
+
+    using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManagerType>;
+    using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManagerType>;
+
+    explicit constexpr ConcurrentQueue( const AllocatorType& InAllocator = AllocatorType{} )
+        : ExplicitManager( MakeDefaultExplicitBlockManager( ExplicitAllocatorType( InAllocator ) ) ), ImplicitManager( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ) ) {}
+
+    template <class... Args1, class... Args2>
+    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), Args1&&...>&&
+                                                                                                std::invocable<decltype( Traits::MakeImplicitBlockManager ), Args2&&...> )
+    explicit constexpr ConcurrentQueue( std::piecewise_construct_t, std::tuple<Args1...> FirstArgs, std::tuple<Args2...> SecondArgs, const AllocatorType& InAllocator )
+        :
+#if HAKLE_CPP_VERSION >= 17
+          ExplicitManager( std::apply(
+              []( Args1&&... args1, const AllocatorType& InAllocator ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); },
+              FirstArgs ) ),
+          ImplicitManager( std::apply(
+              []( Args2&&... args2, const AllocatorType& InAllocator ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); },
+              SecondArgs ) )
+#else
+          ExplicitManager( hakle::Apply(
+              []( Args1&&... args1, const AllocatorType& InAllocator ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); },
+              FirstArgs ) ),
+          ImplicitManager( hakle::Apply(
+              []( Args2&&... args2, const AllocatorType& InAllocator ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); },
+              SecondArgs ) )
+#endif
+    {
+    }
 
 private:
     struct ProducerTypelessBase;
@@ -1246,7 +1308,7 @@ public:
             }
         }
 
-        bool Valid() const noexcept { return Producer != nullptr; }
+        [[nodiscard]] bool Valid() const noexcept { return Producer != nullptr; }
 
     protected:
         ProducerTypelessBase* Producer;
@@ -1254,7 +1316,7 @@ public:
 
     struct ConsumerToken {
         ConsumerToken( ConsumerToken&& Other ) noexcept
-            : InitialOffeset( Other.InitialOffeset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ),
+            : InitialOffset( Other.InitialOffset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ),
               DesiredProducer( Other.DesiredProducer ) {}
 
         ConsumerToken& operator=( ConsumerToken&& Other ) noexcept {
@@ -1264,7 +1326,7 @@ public:
 
         void swap( ConsumerToken& Other ) noexcept {
             using std::swap;
-            swap( InitialOffeset, Other.InitialOffeset );
+            swap( InitialOffset, Other.InitialOffset );
             swap( DesiredProducer, Other.DesiredProducer );
             swap( LastKnownGlobalOffset, Other.LastKnownGlobalOffset );
             swap( CurrentProducer, Other.CurrentProducer );
@@ -1275,7 +1337,7 @@ public:
         ConsumerToken& operator=( const ConsumerToken& ) = delete;
 
     private:
-        std::uint32_t         InitialOffeset;
+        std::uint32_t         InitialOffset;
         std::uint32_t         LastKnownGlobalOffset;
         std::uint32_t         ItemsConsumed;
         ProducerTypelessBase* CurrentProducer;
@@ -1288,11 +1350,14 @@ private:
         std::atomic<bool>     Inactive{ false };
         QueueTypelessBase*    Queue{ nullptr };
         ProducerToken*        Token{ nullptr };
+        ConcurrentQueue*      Parent{ nullptr };
 
         virtual ~ProducerTypelessBase() = default;
     };
 
-    HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap;
+    ExplicitBlockManagerType                                                                      ExplicitManager{};
+    ImplicitBlockManagerType                                                                      ImplicitManager{};
+    HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
 };
 
 }  // namespace hakle
