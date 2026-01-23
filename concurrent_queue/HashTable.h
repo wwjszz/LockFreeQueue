@@ -8,9 +8,9 @@
 #include <atomic>
 #include <concepts>
 
-#include "common/CompressPair.h"
 #include "common/allocator.h"
 #include "common/common.h"
+#include "common/compress_pair.h"
 #include "common/utility.h"
 
 #ifndef HAKLE_USE_CONCEPT
@@ -104,7 +104,7 @@ private:
 public:
     using Entry = Pair<std::atomic<TKey>, std::atomic<TValue>>;
 
-    explicit constexpr HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ), INVALID_KEY( InValidKey ) {
+    explicit constexpr HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( value_init_tag{}, InAllocator ), INVALID_KEY( InValidKey ) {
 #ifndef HAKLE_USE_CONCEPT
         assert( std::atomic<TValue>{}.is_lock_free() );
 #endif
@@ -338,8 +338,8 @@ private:
     }
 
     std::atomic<std::size_t>                                EntriesCount{ 0 };
-    CompressPair<std::atomic_flag, PairAllocatorType>       PairAllocatorPair{};
-    CompressPair<std::atomic<HashNode*>, NodeAllocatorType> NodeAllocatorPair{};
+    compress_pair<std::atomic_flag, PairAllocatorType>       PairAllocatorPair{};
+    compress_pair<std::atomic<HashNode*>, NodeAllocatorType> NodeAllocatorPair{};
 
     // TODO: use compress pair
     HashType Hash{};
@@ -352,10 +352,10 @@ private:
     constexpr const NodeAllocatorType& NodeAllocator() const noexcept { return NodeAllocatorPair.Second(); }
 
     // producer only fields
-    constexpr std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
+    constexpr std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.first(); }
     constexpr std::atomic<HashNode*>& MainHash() noexcept { return NodeAllocatorPair.First(); }
 
-    HAKLE_NODISCARD constexpr const std::atomic_flag&       HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::atomic_flag&       HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.first(); }
     HAKLE_NODISCARD constexpr const std::atomic<HashNode*>& MainHash() const noexcept { return NodeAllocatorPair.First(); }
 };
 

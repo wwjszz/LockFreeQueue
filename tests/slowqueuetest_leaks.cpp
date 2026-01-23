@@ -1,7 +1,7 @@
-#include "ConcurrentQueue/Block.h"
-#include "ConcurrentQueue/BlockManager.h"
-#include "ConcurrentQueue/ConcurrentQueue.h"
 #include "common/allocator.h"
+#include "concurrent_queue/block.h"
+#include "concurrent_queue/block_manager.h"
+#include "concurrent_queue/concurrent_queue.h"
 
 #include <gtest/gtest.h>
 
@@ -15,17 +15,17 @@ using namespace hakle;
 constexpr std::size_t kBlockSize = 4;
 constexpr std::size_t POOL_SIZE  = 40;
 
-using TestFlagsBlock          = HakleFlagsBlock<int, kBlockSize>;
-using TestCounterBlock        = HakleCounterBlock<int, kBlockSize>;
-using TestCounterBlockManager = HakleCounterBlockManager<int, kBlockSize>;
-using TestFlagsBlockManager   = HakleFlagsBlockManager<int, kBlockSize>;
+using TestFlagsBlock          = hakle_flags_block<int, kBlockSize>;
+using TestCounterBlock        = hakle_counter_block<int, kBlockSize>;
+using TestCounterBlockManager = hakle_counter_block_manager<int, kBlockSize>;
+using TestFlagsBlockManager   = hakle_flags_block_manager<int, kBlockSize>;
 using TestFlagsAllocator      = HakleAllocator<TestFlagsBlock>;
 
-using TestSlowQueue = SlowQueue<int, kBlockSize>;
-using TestSlowQueue = SlowQueue<int, kBlockSize>;
+using TestSlowQueue = slow_queue<int, kBlockSize>;
+using TestSlowQueue = slow_queue<int, kBlockSize>;
 
-using FastAllocMode = TestSlowQueue::AllocMode;
-using SlowAllocMode = TestSlowQueue::AllocMode;
+using FastAllocMode = TestSlowQueue::alloc_mode;
+using SlowAllocMode = TestSlowQueue::alloc_mode;
 
 struct ExceptionTest {
     ExceptionTest( int v = 0 ) : value( v ) {
@@ -78,13 +78,13 @@ TEST( SlowQueueLeaks, StressTest ) {
         a[ i ] = i;
     }
 
-    HakleCounterBlockManager<int, kBlockSize> blockManager( POOL_SIZE );
-    SlowQueue<int, kBlockSize>                queue( 2, blockManager );
+    hakle_counter_block_manager<int, kBlockSize> blockManager( POOL_SIZE );
+    slow_queue<int, kBlockSize>                queue( 2, blockManager );
 
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
         for ( int i = 0; i < N; ++i ) {
-            while ( !queue.EnqueueBulk<FastAllocMode::CanAlloc>( a, 100 ) ) {
+            while ( !queue.EnqueueBulk<FastAllocMode::can_alloc>( a, 100 ) ) {
                 printf( "enqueue failed\n" );
             }
         }
@@ -122,12 +122,12 @@ TEST( SlowQueueLeaks, StressTest ) {
 }
 
 TEST( SlowQueueLeaks, EnqueueExceptionTest ) {
-    using ExceptionBlock       = HakleCounterBlock<ExceptionTest, kBlockSize>;
-    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
-    using ExceptionQueue       = SlowQueue<ExceptionTest, kBlockSize, HakleAllocator<ExceptionTest>, ExceptionBlock>;
+    using ExceptionBlock       = hakle_counter_block<ExceptionTest, kBlockSize>;
+    using ExceptionBlockManger = hakle_block_manager<ExceptionBlock>;
+    using ExceptionQueue       = slow_queue<ExceptionTest, kBlockSize, HakleAllocator<ExceptionTest>, ExceptionBlock>;
     ExceptionBlockManger blockManager( POOL_SIZE );
     ExceptionQueue       queue( 20, blockManager );
-    using AllocMode = ExceptionQueue::AllocMode;
+    using AllocMode = ExceptionQueue::alloc_mode;
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
     const int                       NUM_CONSUMERS = 32;      // 3 个消费者
@@ -146,10 +146,10 @@ TEST( SlowQueueLeaks, EnqueueExceptionTest ) {
         for ( std::size_t i = 0; i < N; ++i ) {
             // a[ 0 ] = i % 100;
             try {
-                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a + 10 * ( i % 10 ), 10 ) ) {
+                if ( !queue.EnqueueBulk<AllocMode::can_alloc>( a + 10 * ( i % 10 ), 10 ) ) {
                     printf( "enqueue failed\n" );
                 }
-                // if ( !queue.Enqueue<AllocMode::CanAlloc>( a[ 0 ] ) ) {
+                // if ( !queue.Enqueue<alloc_mode::can_alloc>( a[ 0 ] ) ) {
                 //     printf( "enqueue failed\n" );
                 // }
             }
@@ -205,12 +205,12 @@ TEST( SlowQueueLeaks, EnqueueExceptionTest ) {
 }
 
 TEST( SlowQueueLeaks, DequeueExceptionTest ) {
-    using ExceptionBlock       = HakleCounterBlock<ExceptionTest2, kBlockSize>;
-    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
-    using ExceptionQueue       = SlowQueue<ExceptionTest2, kBlockSize>;
+    using ExceptionBlock       = hakle_counter_block<ExceptionTest2, kBlockSize>;
+    using ExceptionBlockManger = hakle_block_manager<ExceptionBlock>;
+    using ExceptionQueue       = slow_queue<ExceptionTest2, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
     ExceptionQueue       queue( 2, blockManager );
-    using AllocMode = ExceptionQueue::AllocMode;
+    using AllocMode = ExceptionQueue::alloc_mode;
 
     const unsigned long long        N             = 80000;  // 每个数从 0 到 N-1
     const int                       NUM_CONSUMERS = 68;     // 3 个消费者
@@ -228,7 +228,7 @@ TEST( SlowQueueLeaks, DequeueExceptionTest ) {
     std::thread producer( [ &queue, N, a ]() {
         for ( std::size_t i = 0; i < N; ++i ) {
             try {
-                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 100 ) ) {
+                if ( !queue.EnqueueBulk<AllocMode::can_alloc>( a, 100 ) ) {
                     printf( "enqueue failed\n" );
                 }
             }
@@ -282,7 +282,7 @@ TEST( SlowQueueLeaks, DequeueExceptionTest ) {
     EXPECT_EQ( total_sum.load(), expected_sum - N * 45 );
 
     // 验证队列为空
-    EXPECT_EQ( queue.Size(), 0 );
+    EXPECT_EQ( queue.size(), 0 );
 }
 
 int main( int argc, char** argv ) {

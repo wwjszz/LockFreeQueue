@@ -1,28 +1,28 @@
 // ExplicitQueueExceptionTest.cpp
-#include "ConcurrentQueue/Block.h"
+#include "concurrent_queue/block.h"
 
 #include <gtest/gtest.h>
 #include <iostream>
 #include <thread>
 #include <vector>
 
-#include "ConcurrentQueue/ConcurrentQueue.h"  // 浣犵殑 ExplicitQueue 瀹氫箟
+#include "concurrent_queue/concurrent_queue.h"  // 浣犵殑 ExplicitQueue 瀹氫箟
 #include "Debug/ThrowOnAssign.h"
 #include "Debug/ThrowOnCtor.h"
 
 using namespace hakle;
 
-// 这里假设你已经有一个 HakleBlockManager<BlockType>，并且 ExplicitQueue 的模板参数是 <BLOCK_TYPE, BLOCK_MANAGER_TYPE>
-// 如果你用的是 HakleFlagsBlock + HakleBlockManager，就这样定义：
+// 这里假设你已经有一个 hakle_block_manager<block_type>，并且 ExplicitQueue 的模板参数是 <BLOCK_TYPE, BLOCK_MANAGER_TYPE>
+// 如果你用的是 HakleFlagsBlock + hakle_block_manager，就这样定义：
 
 constexpr std::size_t kBlockSize = 64;
 
-using Block        = HakleCounterBlock<ThrowOnCtor, kBlockSize>;
-using BlockManager = HakleBlockManager<Block>;
-using Queue        = SlowQueue<ThrowOnCtor, kBlockSize>;
-using AllocMode    = Queue::AllocMode;
+using Block        = hakle_counter_block<ThrowOnCtor, kBlockSize>;
+using BlockManager = hakle_block_manager<Block>;
+using Queue        = slow_queue<ThrowOnCtor, kBlockSize>;
+using AllocMode    = Queue::alloc_mode;
 
-// 如果你的 BlockManager 类型名不同，改一下上面的 using 即可。
+// 如果你的 block_manager_ 类型名不同，改一下上面的 using 即可。
 
 // ========== 测试 1: Enqueue 构造异常回滚 ==========
 
@@ -36,7 +36,7 @@ TEST( ExplicitQueueExceptionTest, Enqueue_ExceptionRollback ) {
 
     bool caught = false;
     try {
-        q.Enqueue<AllocMode::CanAlloc>( 42 );  // 这里内部可能会构造 1~多个 ThrowOnCtor
+        q.Enqueue<alloc_mode::can_alloc>( 42 );  // 这里内部可能会构造 1~多个 ThrowOnCtor
     }
     catch ( std::exception const& ) {
         caught = true;
@@ -44,7 +44,7 @@ TEST( ExplicitQueueExceptionTest, Enqueue_ExceptionRollback ) {
     EXPECT_TRUE( caught );
 
     // 队列应为空
-    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( q.size(), 0u );
 
     // 至少能保证：所有“构造成功”的对象都已析构完
     EXPECT_EQ( ThrowOnCtor::liveCount.load(), 1 );
@@ -70,7 +70,7 @@ TEST( ExplicitQueueExceptionTest, EnqueueBulk_ExceptionRollback ) {
 
     bool caught = false;
     try {
-        q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT );
+        q.EnqueueBulk<alloc_mode::can_alloc>( src.begin(), COUNT );
     }
     catch ( std::exception const& ) {
         caught = true;
@@ -78,7 +78,7 @@ TEST( ExplicitQueueExceptionTest, EnqueueBulk_ExceptionRollback ) {
     EXPECT_TRUE( caught );
 
     // bulk 视为整个失败，队列应仍为空
-    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( q.size(), 0u );
 
     // 由队列内部为该 bulk 构造的所有对象必须全部析构
     EXPECT_EQ( ThrowOnCtor::liveCount.load(), 1 );
@@ -103,26 +103,26 @@ TEST( ExplicitQueueExceptionTest, EnqueueBulk_FailThenSuccess ) {
     ThrowOnCtor::Reset( /*throwOn=*/static_cast<int>( COUNT / 2 ) );
     bool caught = false;
     try {
-        q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT );
+        q.EnqueueBulk<alloc_mode::can_alloc>( src.begin(), COUNT );
     }
     catch ( ... ) {
         caught = true;
     }
     EXPECT_TRUE( caught );
-    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( q.size(), 0u );
     EXPECT_EQ( ThrowOnCtor::liveCount.load(), 1 );
     EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() + 1 );
 
     // 第二次：不抛异常，应该完全成功
     ThrowOnCtor::Reset( /*throwOn=*/-1 );
-    EXPECT_NO_THROW( q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT ) );
-    EXPECT_EQ( q.Size(), COUNT );
+    EXPECT_NO_THROW( q.EnqueueBulk<alloc_mode::can_alloc>( src.begin(), COUNT ) );
+    EXPECT_EQ( q.size(), COUNT );
 
     // 全部 Dequeue 出来
     std::vector<ThrowOnCtor>* out = new std::vector<ThrowOnCtor>( COUNT );
     auto                      got = q.DequeueBulk( out->begin(), COUNT );
     EXPECT_EQ( got, COUNT );
-    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( q.size(), 0u );
 
     long long sum = 0;
     for ( auto const& x : *out )
@@ -153,8 +153,8 @@ TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
 
     // enqueue 正常
     ThrowOnCtor::Reset( -1 );
-    EXPECT_NO_THROW( q.EnqueueBulk<AllocMode::CanAlloc>( src.begin(), COUNT ) );
-    EXPECT_EQ( q.Size(), COUNT );
+    EXPECT_NO_THROW( q.EnqueueBulk<alloc_mode::can_alloc>( src.begin(), COUNT ) );
+    EXPECT_EQ( q.size(), COUNT );
 
     auto* out                    = new std::vector<ThrowOnAssign>( COUNT );
     ThrowOnAssign::assignCount   = 0;
@@ -173,7 +173,7 @@ TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
     // 你的 DequeueBulk 实现中，catch 分支会销毁所有剩余 Value，并对相应 slot 调 SetSomeEmpty
     // 所以已参与本次 DequeueBulk 的那一批元素应不再留在队列中。
     // 简化起见：这里要求队列为空（如果你希望队列还保留没有被尝试出队的元素，可以改成 EXPECT_LE 等）
-    EXPECT_EQ( q.Size(), 0u );
+    EXPECT_EQ( q.size(), 0u );
 
     delete out;
 
@@ -212,7 +212,7 @@ TEST( ExplicitQueueExceptionTest, MultiConsumerStress_ThrowOnCtor ) {
                 ThrowOnCtor::SetThrowOnCtor( -1 );
             }
             try {
-                q.Enqueue<AllocMode::CanAlloc>( static_cast<int>( i ) );
+                q.Enqueue<alloc_mode::can_alloc>( static_cast<int>( i ) );
             }
             catch ( ... ) {
                 failed.fetch_add( 1, std::memory_order_relaxed );

@@ -1,7 +1,7 @@
 //
 // Created by admin on 25-11-25.
 //
-#include "../ConcurrentQueue/BlockManager.h"
+#include "../concurrent_queue/block_manager.h"
 #include <atomic>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -10,8 +10,8 @@
 
 using namespace hakle;
 
-// 测试节点类型：继承 FreeListNode，HasOwner 默认为 false
-struct TestNode : public FreeListNode<TestNode> {
+// 测试节点类型：继承 FreeListNode，has_owner 默认为 false
+struct TestNode : public free_list_node<TestNode> {
     int               value;
     std::atomic<bool> in_use{ false };
 
@@ -20,14 +20,14 @@ struct TestNode : public FreeListNode<TestNode> {
 
 class FreeListTest : public ::testing::Test {
 protected:
-    void SetUp() override { list = new FreeList<TestNode>(); }
+    void SetUp() override { list = new free_list<TestNode>(); }
 
     void TearDown() override {
-        // FreeList 析构时会自动 delete 所有 HasOwner==false 的节点
+        // free_list 析构时会自动 delete 所有 has_owner==false 的节点
         delete list;
     }
 
-    FreeList<TestNode>* list;
+    free_list<TestNode>* list;
 };
 
 // 测试基本添加和获取
@@ -35,38 +35,38 @@ TEST_F( FreeListTest, BasicAddAndGet ) {
     auto* node1 = new TestNode( 42 );
     auto* node2 = new TestNode( 100 );
 
-    list->Add( node1 );
-    list->Add( node2 );
+    list->add( node1 );
+    list->add( node2 );
 
-    TestNode* retrieved1 = list->TryGet();
+    TestNode* retrieved1 = list->try_get();
     ASSERT_NE( retrieved1, nullptr );
 
-    TestNode* retrieved2 = list->TryGet();
+    TestNode* retrieved2 = list->try_get();
     ASSERT_NE( retrieved2, nullptr );
 
     EXPECT_TRUE( ( retrieved1 == node1 && retrieved2 == node2 ) || ( retrieved1 == node2 && retrieved2 == node1 ) );
 
-    TestNode* should_be_null = list->TryGet();
+    TestNode* should_be_null = list->try_get();
     EXPECT_EQ( should_be_null, nullptr );
 }
 
 // 测试重复添加同一个节点（应被忽略）
 TEST_F( FreeListTest, DuplicateAdd ) {
     auto* node = new TestNode( 42 );
-    list->Add( node );
-    list->Add( node );  // 第二次添加应被忽略
+    list->add( node );
+    list->add( node );  // 第二次添加应被忽略
 
-    TestNode* retrieved1 = list->TryGet();
+    TestNode* retrieved1 = list->try_get();
     ASSERT_NE( retrieved1, nullptr );
     EXPECT_EQ( retrieved1, node );
 
-    TestNode* retrieved2 = list->TryGet();
+    TestNode* retrieved2 = list->try_get();
     EXPECT_EQ( retrieved2, nullptr );
 }
 
 // 测试从空列表获取
 TEST_F( FreeListTest, GetFromEmptyList ) {
-    TestNode* result = list->TryGet();
+    TestNode* result = list->try_get();
     EXPECT_EQ( result, nullptr );
 }
 
@@ -74,12 +74,12 @@ TEST_F( FreeListTest, GetFromEmptyList ) {
 TEST_F( FreeListTest, NodeReuse ) {
     auto* node = new TestNode( 42 );
 
-    list->Add( node );
-    TestNode* first_get = list->TryGet();
+    list->add( node );
+    TestNode* first_get = list->try_get();
     ASSERT_EQ( first_get, node );
 
-    list->Add( node );  // 重新加入
-    TestNode* second_get = list->TryGet();
+    list->add( node );  // 重新加入
+    TestNode* second_get = list->try_get();
     ASSERT_EQ( second_get, node );
 }
 
@@ -91,18 +91,18 @@ TEST_F( FreeListTest, SingleThreadStressTest ) {
 
     for ( int i = 0; i < NUM_NODES; ++i ) {
         nodes.push_back( new TestNode( i ) );
-        list->Add( nodes[ i ] );
+        list->add( nodes[ i ] );
     }
 
     std::vector<TestNode*> retrieved;
     for ( int i = 0; i < NUM_NODES; ++i ) {
-        TestNode* node = list->TryGet();
+        TestNode* node = list->try_get();
         ASSERT_NE( node, nullptr );
         retrieved.push_back( node );
     }
 
     EXPECT_EQ( retrieved.size(), NUM_NODES );
-    EXPECT_EQ( list->TryGet(), nullptr );
+    EXPECT_EQ( list->try_get(), nullptr );
 }
 
 // 多线程并发添加
@@ -124,7 +124,7 @@ TEST_F( FreeListTest, ConcurrentAdd ) {
         threads.emplace_back( [ this, t, &nodes, &add_count, NODES_PER_THREAD ]() {
             for ( int i = 0; i < NODES_PER_THREAD; ++i ) {
                 int idx = t * NODES_PER_THREAD + i;
-                list->Add( nodes[ idx ] );
+                list->add( nodes[ idx ] );
                 add_count.fetch_add( 1, std::memory_order_relaxed );
             }
         } );
@@ -136,7 +136,7 @@ TEST_F( FreeListTest, ConcurrentAdd ) {
     EXPECT_EQ( add_count.load(), TOTAL_NODES );
 
     int get_count = 0;
-    while ( list->TryGet() != nullptr ) {
+    while ( list->try_get() != nullptr ) {
         get_count++;
     }
     EXPECT_EQ( get_count, TOTAL_NODES );
@@ -164,7 +164,7 @@ TEST_F( FreeListTest, ConcurrentAddAndGet ) {
         threads.emplace_back( [ this, t, &initial_nodes, &produced, NODES_PER_PRODUCER ]() {
             for ( int i = 0; i < NODES_PER_PRODUCER; ++i ) {
                 int idx = t * NODES_PER_PRODUCER + i;
-                list->Add( initial_nodes[ idx ] );
+                list->add( initial_nodes[ idx ] );
                 produced.fetch_add( 1, std::memory_order_relaxed );
             }
         } );
@@ -174,13 +174,13 @@ TEST_F( FreeListTest, ConcurrentAddAndGet ) {
     for ( int t = 0; t < NUM_CONSUMERS; ++t ) {
         threads.emplace_back( [ this, &consumed, &stop ]() {
             while ( !stop.load( std::memory_order_acquire ) ) {
-                TestNode* node = list->TryGet();
+                TestNode* node = list->try_get();
                 if ( node != nullptr ) {
                     consumed.fetch_add( 1, std::memory_order_relaxed );
                     // 模拟使用
                     std::this_thread::sleep_for( std::chrono::microseconds( 1 ) );
                     // 重新放回供其他线程使用
-                    list->Add( node );
+                    list->add( node );
                 }
                 else {
                     std::this_thread::yield();
@@ -207,21 +207,21 @@ TEST_F( FreeListTest, MemoryOrderSanity ) {
     auto* n2 = new TestNode( 2 );
     auto* n3 = new TestNode( 3 );
 
-    list->Add( n1 );
-    list->Add( n2 );
+    list->add( n1 );
+    list->add( n2 );
 
-    auto* r1 = list->TryGet();
-    auto* r2 = list->TryGet();
+    auto* r1 = list->try_get();
+    auto* r2 = list->try_get();
     ASSERT_NE( r1, nullptr );
     ASSERT_NE( r2, nullptr );
 
-    list->Add( r1 );
-    list->Add( r2 );
-    list->Add( n3 );
+    list->add( r1 );
+    list->add( r2 );
+    list->add( n3 );
 
-    auto* r3 = list->TryGet();
-    auto* r4 = list->TryGet();
-    auto* r5 = list->TryGet();
+    auto* r3 = list->try_get();
+    auto* r4 = list->try_get();
+    auto* r5 = list->try_get();
 
     EXPECT_NE( r3, nullptr );
     EXPECT_NE( r4, nullptr );
@@ -235,11 +235,11 @@ TEST_F( FreeListTest, LargeNumberOfNodes ) {
     nodes.reserve( LARGE_NUMBER );
     for ( int i = 0; i < LARGE_NUMBER; ++i ) {
         nodes.push_back( new TestNode( i ) );
-        list->Add( nodes[ i ] );
+        list->add( nodes[ i ] );
     }
 
     int count = 0;
-    while ( list->TryGet() != nullptr ) {
+    while ( list->try_get() != nullptr ) {
         count++;
     }
     EXPECT_EQ( count, LARGE_NUMBER );
@@ -247,19 +247,19 @@ TEST_F( FreeListTest, LargeNumberOfNodes ) {
 
 // 类型约束测试（编译期）
 TEST_F( FreeListTest, TypeConstraints ) {
-    struct GoodNode : FreeListNode<GoodNode> {
+    struct GoodNode : free_list_node<GoodNode> {
         int data;
     };
     // 应该能编译通过
-    FreeList<GoodNode> good_list;
+    free_list<GoodNode> good_list;
     auto*              node = new GoodNode{};
-    good_list.Add( node );
-    delete good_list.TryGet();  // 手动删（因为 HasOwner=false，但这里只测构造）
+    good_list.add( node );
+    delete good_list.try_get();  // 手动删（因为 has_owner=false，但这里只测构造）
 
     // 下面取消注释会导致编译错误：
     /*
     struct BadNode { int x; };
-    FreeList<BadNode> bad; // static_assert 失败
+    free_list<BadNode> bad; // static_assert 失败
     */
 }
 

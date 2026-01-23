@@ -8,8 +8,8 @@
 #include <thread>
 #include <vector>
 
-#include "../ConcurrentQueue/BlockManager.h"
-#include "../ConcurrentQueue/HashTable.h"
+#include "../concurrent_queue/HashTable.h"
+#include "../concurrent_queue/block_manager.h"
 
 #include <iostream>
 
@@ -17,7 +17,7 @@
 
 using namespace hakle;
 
-struct MyNode : public FreeListNode<MyNode> {};
+struct MyNode : public free_list_node<MyNode> {};
 
 // 测试用的键值类型
 using TestHashTable = HashTable<uint32_t, uint32_t, 8>;
@@ -25,7 +25,7 @@ using TestHashTable = HashTable<uint32_t, uint32_t, 8>;
 class HashTableTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        FreeList<MyNode> t;
+        free_list<MyNode> t;
         table = new TestHashTable( UINT32_MAX );
     }
 

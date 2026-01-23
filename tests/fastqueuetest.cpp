@@ -1,9 +1,9 @@
 // test/queue_test.cpp
-#include "ConcurrentQueue/Block.h"
+#include "concurrent_queue/block.h"
 
 #include <gtest/gtest.h>
 
-#include "ConcurrentQueue/ConcurrentQueue.h"
+#include "concurrent_queue/concurrent_queue.h"
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -15,16 +15,16 @@ using namespace hakle;
 constexpr std::size_t kBlockSize = 2;
 
 constexpr std::size_t POOL_SIZE = 100;
-using TestFlagsBlock            = HakleFlagsBlock<int, kBlockSize>;
-using TestCounterBlock          = HakleCounterBlock<int, kBlockSize>;
+using TestFlagsBlock            = hakle_flags_block<int, kBlockSize>;
+using TestCounterBlock          = hakle_counter_block<int, kBlockSize>;
 using TestCounterAllocator      = HakleAllocator<TestCounterBlock>;
-using TestCounterBlockManager   = HakleCounterBlockManager<int, kBlockSize>;
+using TestCounterBlockManager   = hakle_counter_block_manager<int, kBlockSize>;
 using TestFlagsAllocator        = HakleAllocator<TestFlagsBlock>;
-using TestFlagsBlockManager     = HakleFlagsBlockManager<int, kBlockSize>;
+using TestFlagsBlockManager     = hakle_flags_block_manager<int, kBlockSize>;
 
 // 定义测试队列类型
-using TestFlagsQueue   = FastQueue<int, kBlockSize>;
-using TestCounterQueue = FastQueue<int, kBlockSize, HakleAllocator<int>, TestCounterBlock, TestCounterBlockManager>;
+using TestFlagsQueue   = fast_queue<int, kBlockSize>;
+using TestCounterQueue = fast_queue<int, kBlockSize, HakleAllocator<int>, TestCounterBlock, TestCounterBlockManager>;
 
 // 辅助：等待一段时间让操作完成
 void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::milliseconds( ms ) ); }
@@ -33,31 +33,31 @@ void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::mil
 TEST( FastQueueTest, BasicEnqueueDequeue ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
     TestFlagsQueue        queue( 10, blockManager );
-    using AllocMode = TestFlagsQueue::AllocMode;
+    using AllocMode = TestFlagsQueue::alloc_mode;
 
-    EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( 100 ) );
-    EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( 200 ) );
+    EXPECT_TRUE( queue.enqueue<AllocMode::can_alloc>( 100 ) );
+    EXPECT_TRUE( queue.enqueue<AllocMode::can_alloc>( 200 ) );
 
     int value = 0;
-    EXPECT_TRUE( queue.Dequeue( value ) );
+    EXPECT_TRUE( queue.dequeue( value ) );
     EXPECT_EQ( value, 100 );
 
-    EXPECT_TRUE( queue.Dequeue( value ) );
+    EXPECT_TRUE( queue.dequeue( value ) );
     EXPECT_EQ( value, 200 );
 
-    EXPECT_FALSE( queue.Dequeue( value ) );  // 空队列
+    EXPECT_FALSE( queue.dequeue( value ) );  // 空队列
 }
 
 // === 测试 2: 队列大小 ===
 TEST( FastQueueTest, Size ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 5, blockManager );
-    using AllocMode = TestCounterQueue::AllocMode;
+    using AllocMode = TestCounterQueue::alloc_mode;
     EXPECT_EQ( queue.Size(), 0 );
 
-    queue.Enqueue<AllocMode::CanAlloc>( 1 );
-    queue.Enqueue<AllocMode::CanAlloc>( 2 );
-    queue.Enqueue<AllocMode::CanAlloc>( 3 );
+    queue.Enqueue<AllocMode::can_alloc>( 1 );
+    queue.Enqueue<AllocMode::can_alloc>( 2 );
+    queue.Enqueue<AllocMode::can_alloc>( 3 );
 
     EXPECT_EQ( queue.Size(), 3 );
 
@@ -70,7 +70,7 @@ TEST( FastQueueTest, Size ) {
 TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
     TestFlagsQueue        queue( 100, blockManager );
-    using AllocMode         = TestFlagsQueue::AllocMode;
+    using AllocMode         = TestFlagsQueue::alloc_mode;
     const int num_items     = 1000;
     const int num_consumers = 4;
 
@@ -82,7 +82,7 @@ TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
         consumers.emplace_back( [ num_items, &queue, &consumed_count ]() {
             int value;
             while ( consumed_count.load() < num_items ) {
-                if ( queue.Dequeue( value ) ) {
+                if ( queue.dequeue( value ) ) {
                     ++consumed_count;
                     // 模拟处理
                     std::this_thread::yield();
@@ -97,7 +97,7 @@ TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
     // 生产者线程
     std::thread producer( [ &queue, num_items ]() {
         for ( int i = 0; i < num_items; ++i ) {
-            while ( !queue.Enqueue<AllocMode::CanAlloc>( i ) ) {
+            while ( !queue.enqueue<AllocMode::can_alloc>( i ) ) {
                 std::this_thread::yield();  // 如果失败（理论上不会），重试
             }
         }
@@ -109,7 +109,7 @@ TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
     }
 
     EXPECT_EQ( consumed_count.load(), num_items );
-    EXPECT_EQ( queue.Size(), 0 );  // 所有都被消费
+    EXPECT_EQ( queue.size(), 0 );  // 所有都被消费
 }
 
 // === 测试 4: 异常安全（构造函数抛出）===
@@ -125,29 +125,29 @@ struct ThrowingType {
     ThrowingType( const ThrowingType& )            = default;
     ThrowingType& operator=( const ThrowingType& ) = default;
 };
-using ThrowingBlock        = HakleFlagsBlock<ThrowingType, kBlockSize>;
-using ThrowingBlockManager = HakleBlockManager<ThrowingBlock>;
-using ThrowingQueue        = FastQueue<ThrowingType, kBlockSize>;
+using ThrowingBlock        = hakle_flags_block<ThrowingType, kBlockSize>;
+using ThrowingBlockManager = hakle_block_manager<ThrowingBlock>;
+using ThrowingQueue        = fast_queue<ThrowingType, kBlockSize>;
 
 TEST( FastQueueTest, ExceptionSafety ) {
     ThrowingBlockManager blockManager( POOL_SIZE );
     ThrowingQueue        queue( 10, blockManager );
-    using AllocMode = ThrowingQueue::AllocMode;
+    using AllocMode = ThrowingQueue::alloc_mode;
 
     // 正常插入
-    EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( ThrowingType( 10 ) ) );
+    EXPECT_TRUE( queue.enqueue<AllocMode::can_alloc>( ThrowingType( 10 ) ) );
 
     // 抛出异常的插入
-    EXPECT_THROW( { queue.Enqueue<AllocMode::CanAlloc>( ThrowingType( 999 ) ); }, std::runtime_error );
+    EXPECT_THROW( { queue.enqueue<AllocMode::can_alloc>( ThrowingType( 999 ) ); }, std::runtime_error );
 
     // 队列仍可用
     ThrowingType val( 0 );
-    EXPECT_TRUE( queue.Dequeue( val ) );
+    EXPECT_TRUE( queue.dequeue( val ) );
     EXPECT_EQ( val.value, 10 );
 
     // 再次插入正常值
-    EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( ThrowingType( 20 ) ) );
-    EXPECT_TRUE( queue.Dequeue( val ) );
+    EXPECT_TRUE( queue.enqueue<AllocMode::can_alloc>( ThrowingType( 20 ) ) );
+    EXPECT_TRUE( queue.dequeue( val ) );
     EXPECT_EQ( val.value, 20 );
 }
 
@@ -155,9 +155,9 @@ TEST( FastQueueTest, ExceptionSafety ) {
 TEST( FastQueueTest, CounterPolicyBasic ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 10, blockManager );
-    using AllocMode = TestCounterQueue::AllocMode;
+    using AllocMode = TestCounterQueue::alloc_mode;
 
-    EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( 42 ) );
+    EXPECT_TRUE( queue.Enqueue<AllocMode::can_alloc>( 42 ) );
     int value = 0;
     EXPECT_TRUE( queue.Dequeue( value ) );
     EXPECT_EQ( value, 42 );
@@ -168,12 +168,12 @@ TEST( FastQueueTest, CounterPolicyBasic ) {
 TEST( FastQueueTest, HighVolumeStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 100, blockManager );
-    using AllocMode = TestCounterQueue::AllocMode;
+    using AllocMode = TestCounterQueue::alloc_mode;
     const int N     = 10000;
 
     std::thread producer( [ &queue, N ]() {
         for ( int i = 0; i < N; ++i ) {
-            while ( !queue.Enqueue<AllocMode::CanAlloc>( i ) ) {
+            while ( !queue.Enqueue<AllocMode::can_alloc>( i ) ) {
                 std::this_thread::yield();
             }
         }
@@ -201,7 +201,7 @@ TEST( FastQueueTest, HighVolumeStressTest ) {
 TEST( FastQueueTest, MultiConsumerStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 100, blockManager );
-    using AllocMode = TestCounterQueue::AllocMode;
+    using AllocMode = TestCounterQueue::alloc_mode;
 
     const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
     const int                       NUM_CONSUMERS = 68;    // 3 个消费者
@@ -217,7 +217,7 @@ TEST( FastQueueTest, MultiConsumerStressTest ) {
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
         for ( int i = 0; i < N; ++i ) {
-            while ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 100 ) ) {
+            while ( !queue.EnqueueBulk<AllocMode::can_alloc>( a, 100 ) ) {
                 printf( "enqueue failed\n" );
             }
         }
@@ -283,12 +283,12 @@ struct ExceptionTest {
 
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
 TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
-    using ExceptionBlock       = HakleFlagsBlock<ExceptionTest, kBlockSize>;
-    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
-    using ExceptionQueue       = FastQueue<ExceptionTest, kBlockSize>;
+    using ExceptionBlock       = hakle_flags_block<ExceptionTest, kBlockSize>;
+    using ExceptionBlockManger = hakle_block_manager<ExceptionBlock>;
+    using ExceptionQueue       = fast_queue<ExceptionTest, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
     ExceptionQueue       queue( 100, blockManager );
-    using AllocMode = ExceptionQueue::AllocMode;
+    using AllocMode = ExceptionQueue::alloc_mode;
 
     const unsigned long long        N             = 800;  // 每个数从 0 到 N-1
     const int                       NUM_CONSUMERS = 68;   // 3 个消费者
@@ -307,7 +307,7 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
         for ( std::size_t i = 1; i <= N; ++i ) {
             a[ 0 ] = i % 100;
             try {
-                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 1 ) ) {
+                if ( !queue.enqueue_bulk<AllocMode::can_alloc>( a, 1 ) ) {
                     printf( "enqueue failed\n" );
                 }
             }
@@ -330,7 +330,7 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
                 // std::size_t   random_index = rand() % 100;
                 // printf("random_index: %zu\n", random_index);
                 try {
-                    std::size_t get_count = queue.DequeueBulk( &buffer[ 0 ], 1 );
+                    std::size_t get_count = queue.dequeue_bulk( &buffer[ 0 ], 1 );
                     count.fetch_add( get_count, std::memory_order_relaxed );
                     for ( std::size_t i = 0; i < get_count; ++i ) {
                         local_sum += buffer[ i ].value;
@@ -362,7 +362,7 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
     printf( "expected_sum: %llu\n", 101 * 50 * N );
 
     // 验证队列为空
-    EXPECT_EQ( queue.Size(), 0 );
+    EXPECT_EQ( queue.size(), 0 );
 }
 
 // test/queue_test.cpp 最后加上：

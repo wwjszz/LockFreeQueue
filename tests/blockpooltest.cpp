@@ -1,9 +1,9 @@
 //
 // Created by admin on 25-11-26.
 //
-#include "ConcurrentQueue/Block.h"
-#include "ConcurrentQueue/BlockManager.h"
 #include "common/allocator.h"
+#include "concurrent_queue/block.h"
+#include "concurrent_queue/block_manager.h"
 
 #include <atomic>
 #include <chrono>
@@ -15,13 +15,13 @@
 using namespace hakle;
 
 // 测试用的基础块类型
-struct TestBlock : public HakleFlagsBlock<int, 64> {
+struct TestBlock : public hakle_flags_block<int, 64> {
     // 可以添加额外的成员变量或方法
     int custom_data{ 0 };
 };
 
 // 自定义块类型用于测试继承约束
-struct CustomBlock : public HakleFlagsBlock<double, 32> {
+struct CustomBlock : public hakle_flags_block<double, 32> {
     std::atomic<bool> initialized{ false };
 
     CustomBlock() { initialized.store( true, std::memory_order_relaxed ); }
@@ -43,12 +43,12 @@ TEST_F( BlockPoolTest, BasicBlockAllocation ) {
     constexpr size_t POOL_SIZE  = 10;
     constexpr size_t BLOCK_SIZE = 64;
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
     // 获取所有块
-    std::vector<HakleFlagsBlock<int, BLOCK_SIZE>*> blocks;
+    std::vector<hakle_flags_block<int, BLOCK_SIZE>*> blocks;
     for ( size_t i = 0; i < POOL_SIZE; ++i ) {
-        auto* block = pool.GetBlock();
+        auto* block = pool.get_block();
         ASSERT_NE( block, nullptr );
         blocks.push_back( block );
 
@@ -58,7 +58,7 @@ TEST_F( BlockPoolTest, BasicBlockAllocation ) {
     }
 
     // 尝试获取超出范围的块
-    auto* should_be_null = pool.GetBlock();
+    auto* should_be_null = pool.get_block();
     EXPECT_EQ( should_be_null, nullptr );
 }
 
@@ -67,10 +67,10 @@ TEST_F( BlockPoolTest, CustomBlockType ) {
     constexpr size_t POOL_SIZE  = 5;
     constexpr size_t BLOCK_SIZE = 32;
 
-    BlockPool<CustomBlock> pool( POOL_SIZE );
+    block_pool<CustomBlock> pool( POOL_SIZE );
 
     for ( size_t i = 0; i < POOL_SIZE; ++i ) {
-        auto* block = pool.GetBlock();
+        auto* block = pool.get_block();
         ASSERT_NE( block, nullptr );
 
         // 验证自定义属性
@@ -85,9 +85,9 @@ TEST_F( BlockPoolTest, ElementAccess ) {
     constexpr size_t POOL_SIZE  = 3;
     constexpr size_t BLOCK_SIZE = 8;
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
-    auto* block = pool.GetBlock();
+    auto* block = pool.get_block();
     ASSERT_NE( block, nullptr );
 
     // 测试元素访问
@@ -106,10 +106,10 @@ TEST_F( BlockPoolTest, CacheLineAlignment ) {
     constexpr size_t POOL_SIZE  = 2;
     constexpr size_t BLOCK_SIZE = 16;
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
-    auto* block1 = pool.GetBlock();
-    auto* block2 = pool.GetBlock();
+    auto* block1 = pool.get_block();
+    auto* block2 = pool.get_block();
 
     ASSERT_NE( block1, nullptr );
     ASSERT_NE( block2, nullptr );
@@ -123,7 +123,7 @@ TEST_F( BlockPoolTest, CacheLineAlignment ) {
 
     // 块之间应该有足够的间距（至少缓存行大小）
     auto distance = std::abs( static_cast<long>( addr2 - addr1 ) );
-    EXPECT_GE( distance, sizeof( HakleFlagsBlock<int, BLOCK_SIZE> ) );
+    EXPECT_GE( distance, sizeof( hakle_flags_block<int, BLOCK_SIZE> ) );
 }
 
 // 测试多线程安全性
@@ -133,20 +133,20 @@ TEST_F( BlockPoolTest, ThreadSafety ) {
     constexpr size_t NUM_THREADS       = 8;
     constexpr size_t BLOCKS_PER_THREAD = 20;  // 总共需要160个，但池只有100个
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
     std::atomic<size_t>                         successful_allocations{ 0 };
     std::atomic<size_t>                         failed_allocations{ 0 };
     std::vector<std::thread>                    threads;
 
     // 用于记录分配的块，确保没有重复分配
-    std::array<std::atomic<HakleFlagsBlock<int, BLOCK_SIZE>*>, POOL_SIZE> allocated_blocks;
+    std::array<std::atomic<hakle_flags_block<int, BLOCK_SIZE>*>, POOL_SIZE> allocated_blocks;
     for ( auto& ptr : allocated_blocks ) {
         ptr.store( nullptr, std::memory_order_relaxed );
     }
-    using BlockType = HakleFlagsBlock<int, BLOCK_SIZE>;
+    using BlockType = hakle_flags_block<int, BLOCK_SIZE>;
     auto worker     = [ & ]( int thread_id ) {
         for ( size_t i = 0; i < BLOCKS_PER_THREAD; ++i ) {
-            auto* block = pool.GetBlock();
+            auto* block = pool.get_block();
             if ( block != nullptr ) {
                 // 记录成功的分配
                 successful_allocations.fetch_add( 1, std::memory_order_relaxed );
@@ -192,21 +192,21 @@ TEST_F( BlockPoolTest, ThreadSafety ) {
 
 // 测试边界情况：大小为0的池
 TEST_F( BlockPoolTest, ZeroSizedPool ) {
-    BlockPool<HakleFlagsBlock<int, 64>> pool( 0 );
+    block_pool<hakle_flags_block<int, 64>> pool( 0 );
 
-    auto* block = pool.GetBlock();
+    auto* block = pool.get_block();
     EXPECT_EQ( block, nullptr );
 }
 
 // 测试边界情况：大小为1的池
 TEST_F( BlockPoolTest, SingleBlockPool ) {
     constexpr size_t                            BLOCK_SIZE = 16;
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( 1 );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( 1 );
 
-    auto* block1 = pool.GetBlock();
+    auto* block1 = pool.get_block();
     ASSERT_NE( block1, nullptr );
 
-    auto* block2 = pool.GetBlock();
+    auto* block2 = pool.get_block();
     EXPECT_EQ( block2, nullptr );
 
     // 验证块可用
@@ -219,11 +219,11 @@ TEST_F( BlockPoolTest, MemoryLayout ) {
     constexpr size_t POOL_SIZE  = 3;
     constexpr size_t BLOCK_SIZE = 4;
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
-    std::vector<HakleFlagsBlock<int, BLOCK_SIZE>*> blocks;
+    std::vector<hakle_flags_block<int, BLOCK_SIZE>*> blocks;
     for ( size_t i = 0; i < POOL_SIZE; ++i ) {
-        blocks.push_back( pool.GetBlock() );
+        blocks.push_back( pool.get_block() );
     }
 
     // 验证块在内存中是连续的（或至少按顺序分配）
@@ -236,27 +236,27 @@ TEST_F( BlockPoolTest, MemoryLayout ) {
 
         // 检查间距（应该至少是一个块的大小）
         auto distance = reinterpret_cast<uintptr_t>( curr ) - reinterpret_cast<uintptr_t>( prev );
-        EXPECT_GE( distance, sizeof( HakleFlagsBlock<int, BLOCK_SIZE> ) );
+        EXPECT_GE( distance, sizeof( hakle_flags_block<int, BLOCK_SIZE> ) );
     }
 }
 
 // 测试类型约束
 TEST_F( BlockPoolTest, TypeConstraints ) {
     // 应该能正常编译（正确继承）
-    struct GoodBlock : public HakleFlagsBlock<float, 16> {
+    struct GoodBlock : public hakle_flags_block<float, 16> {
         // 可以添加自定义成员
     };
 
-    BlockPool<GoodBlock> good_pool( 5 );
+    block_pool<GoodBlock> good_pool( 5 );
     EXPECT_TRUE( true );  // 如果能编译到这里就说明类型约束正确
 
     // 下面这行应该导致编译错误（取消注释测试）
     /*
     struct BadBlock {
         // 没有继承HakleFlagsBlock
-        std::array<float, 16> Elements;
+        std::array<float, 16> elements;
     };
-    BlockPool<float, 16, BadBlock> bad_pool(5); // 应该static_assert失败
+    block_pool<float, 16, BadBlock> bad_pool(5); // 应该static_assert失败
     */
 }
 
@@ -267,11 +267,11 @@ TEST_F( BlockPoolTest, PerformanceLargePool ) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+    block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
     // 分配所有块
     for ( size_t i = 0; i < POOL_SIZE; ++i ) {
-        auto* block = pool.GetBlock();
+        auto* block = pool.get_block();
         ASSERT_NE( block, nullptr );
 
         // 简单操作
@@ -294,11 +294,11 @@ TEST_F( BlockPoolTest, Destruction ) {
 
     // 在作用域内创建和销毁池
     {
-        BlockPool<HakleFlagsBlock<int, BLOCK_SIZE>> pool( POOL_SIZE );
+        block_pool<hakle_flags_block<int, BLOCK_SIZE>> pool( POOL_SIZE );
 
         // 分配一些块
         for ( size_t i = 0; i < POOL_SIZE / 2; ++i ) {
-            auto* block = pool.GetBlock();
+            auto* block = pool.get_block();
             ASSERT_NE( block, nullptr );
         }
     }  // 池应该在这里正确销毁
