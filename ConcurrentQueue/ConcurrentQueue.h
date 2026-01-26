@@ -1255,7 +1255,7 @@ public:
     using Traits::MakeDefaultExplicitBlockManager;
     using Traits::MakeDefaultImplicitBlockManager;
 
-    using BaseProducer = _QueueTypelessBase*;
+    using BaseProducer = _QueueTypelessBase;
 
     using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManagerType>;
     using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManagerType>;
@@ -1527,6 +1527,16 @@ public:
         return Count;
     }
 
+    template <class U>
+    constexpr bool TryDequeueFromProducer( const ProducerToken& Token, U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
+        return Token.ProducerNode->ProducerDequeue( Element );
+    }
+
+    template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
+    std::size_t TryDequeueBulkFromProducer( const ProducerToken& Token, Iterator ItemFirst, std::size_t MaxCount ) {
+        return Token.ProducerNode->ProducerDequeueBulk( ItemFirst, MaxCount );
+    }
+
     struct ProducerToken {
         explicit ProducerToken( ConcurrentQueue& queue ) : ProducerNode( queue.GetProducerListNode( ProducerType::Explicit ) ) {}
         ProducerToken( ProducerToken&& Other ) noexcept : ProducerNode( Other.ProducerNode ) {
@@ -1639,7 +1649,7 @@ private:
         ConcurrentQueue*  Parent{ nullptr };
         ProducerType      Type;
 
-        constexpr ProducerListNode( BaseProducer* InProducer, ProducerType InType, ConcurrentQueue* InParent ) noexcept : Producer( InProducer ), Type( InType ), Parent( InParent ) {}
+        constexpr ProducerListNode( BaseProducer* InProducer, ProducerType InType, ConcurrentQueue* InParent ) noexcept : Producer( InProducer ), Parent( InParent ), Type( InType ) {}
 
         constexpr ExplicitProducer* GetExplicitProducer() const noexcept { return static_cast<ExplicitProducer*>( Producer ); }
         constexpr ImplicitProducer* GetImplicitProducer() const noexcept { return static_cast<ImplicitProducer*>( Producer ); }
@@ -1723,17 +1733,16 @@ private:
         return Node;
     }
 
-    template <ProducerType Type>
-    constexpr ProducerListNode* CreateProducerListNode() {
+    constexpr ProducerListNode* CreateProducerListNode(ProducerType Type) {
         BaseProducer* producer = nullptr;
 
-        if constexpr ( Type == ProducerType::Explicit ) {
+        if  ( Type == ProducerType::Explicit ) {
             producer = ExplicitProducerAllocatorTraits::Allocate( ExplicitProducerAllocator() );
-            ExplicitProducerAllocatorTraits::Construct( ExplicitProducerAllocator(), producer, InitialExplicitQueueSize, ExplicitManager(), ValueAllocator );
+            ExplicitProducerAllocatorTraits::Construct( ExplicitProducerAllocator(), static_cast<ExplicitProducer*>(producer), InitialExplicitQueueSize, ExplicitManager(), ValueAllocator() );
         }
         else {
             producer = ImplicitProducerAllocatorTraits::Allocate( ImplicitProducerAllocator() );
-            ImplicitProducerAllocatorTraits::Construct( ImplicitProducerAllocator(), producer, InitialImplicitQueueSize, ImplicitManager(), ValueAllocator );
+            ImplicitProducerAllocatorTraits::Construct( ImplicitProducerAllocator(), static_cast<ImplicitProducer*>(producer), InitialImplicitQueueSize, ImplicitManager(), ValueAllocator() );
         }
 
         ProducerListNode* node = ProducerListNodeAllocatorTraits::Allocate( ProducerListNodeAllocator() );
@@ -1751,12 +1760,12 @@ private:
         ProducerCount.fetch_sub( 1, std::memory_order_relaxed );
 
         if ( Node->Type == ProducerType::Explicit ) {
-            ExplicitProducerAllocatorTraits::Destroy( ExplicitProducerAllocator(), Node->Producer );
-            ExplicitProducerAllocatorTraits::Deallocate( ExplicitProducerAllocator(), Node->Producer );
+            ExplicitProducerAllocatorTraits::Destroy( ExplicitProducerAllocator(), Node->GetExplicitProducer() );
+            ExplicitProducerAllocatorTraits::Deallocate( ExplicitProducerAllocator(), Node->GetExplicitProducer() );
         }
         else {
-            ImplicitProducerAllocatorTraits::Destroy( ImplicitProducerAllocator(), Node->Producer );
-            ImplicitProducerAllocatorTraits::Deallocate( ImplicitProducerAllocator(), Node->Producer );
+            ImplicitProducerAllocatorTraits::Destroy( ImplicitProducerAllocator(), Node->GetImplicitProducer() );
+            ImplicitProducerAllocatorTraits::Deallocate( ImplicitProducerAllocator(), Node->GetImplicitProducer() );
         }
 
         ProducerListNodeAllocatorTraits::Destroy( ProducerListNodeAllocator(), Node );
@@ -1803,7 +1812,7 @@ private:
         if ( Token.DesiredProducer == nullptr ) {
             std::uint32_t Offset  = Token.InitialOffset % ProducerCount;
             Token.DesiredProducer = Head;
-            for ( int i = 0; i < Offset; ++i ) {
+            for ( std::uint32_t i = 0; i < Offset; ++i ) {
                 Token.DesiredProducer = Token.DesiredProducer->Next;
                 if ( Token.DesiredProducer == nullptr ) {
                     Token.DesiredProducer = Head;
@@ -1812,7 +1821,7 @@ private:
         }
 
         std::uint32_t Delta = ( GlobalOffset - Token.LastKnownGlobalOffset ) % ProducerCount;
-        for ( int i = 0; i < Delta; ++i ) {
+        for ( std::uint32_t i = 0; i < Delta; ++i ) {
             Token.DesiredProducer = Token.DesiredProducer->Next;
             if ( Token.DesiredProducer == nullptr ) {
                 Token.DesiredProducer = Head;
