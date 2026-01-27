@@ -70,10 +70,10 @@ public:
     template <class U1, class U2>
     constexpr CompressPair( U1&& X, U2&& Y ) : Base1( std::forward<U1>( X ) ), Base2( std::forward<U2>( Y ) ) {}
 
-    constexpr typename Base1::Reference      First() { return Base1::Get(); }
-    constexpr typename Base1::ConstReference First() const { return Base1::Get(); }
-    constexpr typename Base2::Reference      Second() { return Base2::Get(); }
-    constexpr typename Base2::ConstReference Second() const { return Base2::Get(); }
+    constexpr typename Base1::Reference      First() { return static_cast<Base1&>( *this ).Get(); }
+    constexpr typename Base1::ConstReference First() const { return static_cast<const Base1&>( *this ).Get(); }
+    constexpr typename Base2::Reference      Second() { return static_cast<Base2&>( *this ).Get(); }
+    constexpr typename Base2::ConstReference Second() const { return static_cast<Base2&>( *this ).Get(); }
 
     constexpr static Base1* GetFirstBase( CompressPair* Pair ) noexcept { return static_cast<Base1*>( Pair ); }
 

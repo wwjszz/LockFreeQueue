@@ -67,16 +67,16 @@ Result TestCQ_NormalEnqDeq( const BenchmarkConfig& cfg ) {
             } );
         }
 
-        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-        //     consumers.emplace_back( [ & ] {
-        //         int value;
-        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-        //             if ( queue.TryDequeue( value ) ) {
-        //                 consumed.fetch_add( 1, std::memory_order_relaxed );
-        //             }
-        //         }
-        //     } );
-        // }
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                int value;
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    if ( queue.TryDequeue( value ) ) {
+                        consumed.fetch_add( 1, std::memory_order_relaxed );
+                    }
+                }
+            } );
+        }
 
         for ( auto& t : producers )
             t.join();
@@ -123,17 +123,17 @@ Result TestCQ_BulkEnqDeq( const BenchmarkConfig& cfg ) {
         }
 
         // consumers
-        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-        //     consumers.emplace_back( [ & ] {
-        //         std::vector<int> buf( BULK );
-        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-        //             std::size_t got = queue.TryDequeueBulk( buf.data(), BULK );
-        //             if ( got > 0 ) {
-        //                 consumed.fetch_add( got, std::memory_order_relaxed );
-        //             }
-        //         }
-        //     } );
-        // }
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                std::vector<int> buf( BULK );
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t got = queue.TryDequeueBulk( buf.data(), BULK );
+                    if ( got > 0 ) {
+                        consumed.fetch_add( got, std::memory_order_relaxed );
+                    }
+                }
+            } );
+        }
 
         for ( auto& t : producers )
             t.join();
@@ -571,16 +571,16 @@ Result TestCQ_MOODY_NormalEnqDeq( const BenchmarkConfig& cfg ) {
             } );
         }
 
-        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-        //     consumers.emplace_back( [ & ] {
-        //         int value;
-        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-        //             if ( queue.try_dequeue( value ) ) {
-        //                 consumed.fetch_add( 1, std::memory_order_relaxed );
-        //             }
-        //         }
-        //     } );
-        // }
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                int value;
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    if ( queue.try_dequeue( value ) ) {
+                        consumed.fetch_add( 1, std::memory_order_relaxed );
+                    }
+                }
+            } );
+        }
 
         for ( auto& t : producers )
             t.join();
@@ -628,17 +628,17 @@ Result TestCQ_MOODY_BulkEnqDeq( const BenchmarkConfig& cfg ) {
         }
 
         // consumers
-        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-        //     consumers.emplace_back( [ & ] {
-        //         std::vector<int> buf( BULK );
-        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-        //             std::size_t got = queue.try_dequeue_bulk( buf.data(), BULK );
-        //             if ( got > 0 ) {
-        //                 consumed.fetch_add( got, std::memory_order_relaxed );
-        //             }
-        //         }
-        //     } );
-        // }
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                std::vector<int> buf( BULK );
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t got = queue.try_dequeue_bulk( buf.data(), BULK );
+                    if ( got > 0 ) {
+                        consumed.fetch_add( got, std::memory_order_relaxed );
+                    }
+                }
+            } );
+        }
 
         for ( auto& t : producers )
             t.join();
@@ -1024,22 +1024,22 @@ int main() {
 #ifdef USE_MY
     results.push_back( TestCQ_NormalEnqDeq( cfg ) );
     results.push_back( TestCQ_BulkEnqDeq( cfg ) );
-    // results.push_back( TestCQ_ProdToken_EnqDeq( cfg ) );
-    // results.push_back( TestCQ_ProdToken_BulkEnqDeq( cfg ) );
-    // results.push_back( TestCQ_ProdTokenEnq_ConsTokenDeq( cfg ) );
-    // results.push_back( TestCQ_NormalEnq_ConsTokenDeq( cfg ) );
-    // results.push_back( TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
-    // results.push_back( TestCQ_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
+    results.push_back( TestCQ_ProdToken_EnqDeq( cfg ) );
+    results.push_back( TestCQ_ProdToken_BulkEnqDeq( cfg ) );
+    results.push_back( TestCQ_ProdTokenEnq_ConsTokenDeq( cfg ) );
+    results.push_back( TestCQ_NormalEnq_ConsTokenDeq( cfg ) );
+    results.push_back( TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
+    results.push_back( TestCQ_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
 #endif
 
-    // results.push_back( TestMutexQueue( cfg ) );
+    results.push_back( TestMutexQueue( cfg ) );
     results.push_back( TestCQ_MOODY_NormalEnqDeq( cfg ) );
     results.push_back( TestCQ_MOODY_BulkEnqDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_ProdToken_EnqDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_ProdToken_BulkEnqDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_ProdTokenEnq_ConsTokenDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_NormalEnq_ConsTokenDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
-    // results.push_back( TestCQ_MOODY_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_ProdToken_EnqDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_ProdToken_BulkEnqDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_ProdTokenEnq_ConsTokenDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_NormalEnq_ConsTokenDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
+    results.push_back( TestCQ_MOODY_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
     PrintRanking( results );
 }
