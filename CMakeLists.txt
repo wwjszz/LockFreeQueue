@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.14)
 project(LockFreeStructures CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -116,8 +116,20 @@ target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
 target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 
+if (CMAKE_CXX_STANDARD EQUAL 11)
+    add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
+    target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
+    target_include_directories(concurrentqueuetest_benchmarks PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
 
-add_executable(concurrentqueuetest tests/concurrentqueuetest.cpp)
+    add_executable(other_test tests/other_test.cpp)
+    target_link_libraries(other_test PRIVATE gtest_main)
+    target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
+endif()
+
+add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
+target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)
+
+target_compile_definitions(concurrentqueuetest_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
@@ -130,3 +142,4 @@ add_test(NAME slowqueuetest COMMAND slowqueuetest)
 add_test(NAME slowqueuetest_exception COMMAND slowqueuetest_exception)
 add_test(NAME slowqueuetest_leaks COMMAND slowqueuetest_leaks)
 add_test(NAME fastqueuetest_leaks COMMAND fastqueuetest_leaks)
+add_test(NAME concurrentqueuetest_check COMMAND concurrentqueuetest_check)

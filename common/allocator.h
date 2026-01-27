@@ -99,6 +99,8 @@ struct HakeAllocatorTraits {
 };
 
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
+#pragma message( "ENABLE_MEMORY_LEAK_DETECTION is defined" )
+std::mutex print_mtx;
 template <class Tp>
 class HakleAllocator {
 public:
@@ -115,51 +117,78 @@ public:
     template <class Up>
     explicit constexpr HakleAllocator( const HakleAllocator<Up>& ) noexcept {}
 
-    ~HakleAllocator() { printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() ); }
+    template <class Up>
+    explicit constexpr HakleAllocator( const HakleAllocator<Up>&& ) noexcept {}
 
-    static std::atomic<int> AllocateCount;
-    static std::atomic<int> ConstructCount;
+    template <class Up>
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>& ) noexcept {
+        return *this;
+    }
+
+    template <class Up>
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>&& ) noexcept {
+        return *this;
+    }
+
+    ~HakleAllocator() = default;
+
+    struct Info {
+        std::atomic<int> ConstructCount{0};
+        std::atomic<int> AllocateCount{0};
+        Info() {
+            // {
+            //     std::lock_guard<std::mutex> lock( print_mtx );
+            //     printf( "[%s] CREATED\n", typeid( Tp ).name() );
+            // }
+        }
+        ~Info() {
+                if ( AllocateCount.load() != 0 || ConstructCount.load() != 0 ) {
+                    std::lock_guard<std::mutex> lock( print_mtx );
+                    printf( "\033[31m[%s] Quit when AllocateCount = %d, ConstructCount = %d\033[0m\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() );
+                }
+                // printf( "[%s] DELETED\n", typeid( Tp ).name() );
+        }
+    };
+
+    static Info info;
 
     constexpr Pointer Allocate() {
-        ++AllocateCount;
+        ++info.AllocateCount;
         return HAKLE_OPERATOR_NEW( Tp );
     }
     constexpr Pointer Allocate( SizeType n ) {
-        AllocateCount += n;
+        info.AllocateCount += n;
         return HAKLE_OPERATOR_NEW_ARRAY( Tp, n );
     }
 
     constexpr void Deallocate( Pointer ptr ) noexcept {
         HAKLE_OPERATOR_DELETE( ptr );
-        --AllocateCount;
+        --info.AllocateCount;
     }
     constexpr void Deallocate( Pointer ptr, HAKLE_MAYBE_UNUSED SizeType n ) noexcept {
         Deallocate( ptr );
-        AllocateCount -= n - 1;
+        info.AllocateCount -= n - 1;
     }
 
     template <class... Args>
     constexpr void Construct( Pointer ptr, Args&&... args ) {
         HAKLE_CONSTRUCT( ptr, std::forward<Args>( args )... );
-        ++ConstructCount;
+        ++info.ConstructCount;
     }
 
     constexpr void Destroy( Pointer ptr ) noexcept {
         HAKLE_DESTROY( ptr );
-        --ConstructCount;
+        --info.ConstructCount;
     }
     constexpr void Destroy( Pointer ptr, SizeType n ) noexcept {
         HAKLE_DESTROY_ARRAY( ptr, n );
-        ConstructCount -= n;
+        info.ConstructCount -= n;
     }
     constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };
 
 template <class Tp>
-std::atomic<int> HakleAllocator<Tp>::AllocateCount{};
-
-template <class Tp>
-std::atomic<int> HakleAllocator<Tp>::ConstructCount{};
+typename HakleAllocator<Tp>::Info HakleAllocator<Tp>::info{};
 
 #else
 
@@ -184,10 +213,14 @@ public:
     explicit constexpr HakleAllocator( const HakleAllocator<Up>&& ) noexcept {}
 
     template <class Up>
-    constexpr HakleAllocator& operator=( const HakleAllocator<Up>& ) noexcept {}
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>& ) noexcept {
+        return *this;
+    }
 
     template <class Up>
-    constexpr HakleAllocator& operator=( const HakleAllocator<Up>&& ) noexcept {}
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>&& ) noexcept {
+        return *this;
+    }
 
     static constexpr Pointer Allocate() { return HAKLE_OPERATOR_NEW( Tp ); }
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }

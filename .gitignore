@@ -54,7 +54,7 @@ Makefile
 CTestTestfile.cmake
 
 # thirdparty
-thirdparty/googletest
+thirdparty/
 
 log.*
 

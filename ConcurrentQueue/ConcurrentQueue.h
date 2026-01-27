@@ -712,7 +712,6 @@ public:
     }
 
     HAKLE_CPP20_CONSTEXPR ~SlowQueue() {
-        IndexEntryPointerAllocatorType();
         std::size_t Index = this->HeadIndex.load( std::memory_order_relaxed );
         std::size_t Tail  = this->TailIndex.load( std::memory_order_relaxed );
 
@@ -724,7 +723,7 @@ public:
                 Block = GetBlockIndexEntryForIndex( Index )->Value.load( std::memory_order_relaxed );
             }
             ValueAllocatorTraits::Destroy( this->ValueAllocator(), ( *Block )[ InnerIndex ] );
-            if ( InnerIndex == BlockSize - 1 ) {
+            if ( InnerIndex == BlockSize - 1 || Index == Tail - 1 ) {
                 BlockManager().ReturnBlock( Block );
             }
             ++Index;
@@ -1203,7 +1202,7 @@ private:
 template <class T, HAKLE_CONCEPT( IsAllocator ) Allocator>
 struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t BlockSize                = 32;
-    static constexpr std::size_t InitialBlockPoolSize     = 64;
+    static constexpr std::size_t InitialBlockPoolSize     = 32 * BlockSize;
     static constexpr std::size_t InitialHashSize          = 32;
     static constexpr std::size_t InitialExplicitQueueSize = 32;
     static constexpr std::size_t InitialImplicitQueueSize = 32;
@@ -1285,10 +1284,12 @@ public:
               std::apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
               ImplicitProducerAllocatorType( InAllocator ) )
 #else
-          ExplicitManager(
-              hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ) ),
-          ImplicitManager(
-              hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ) )
+          ExplicitProducerAllocatorPair(
+              hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
+              ExplicitProducerAllocatorType( InAllocator ) ),
+          ImplicitProducerAllocatorPair(
+              hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
+              ImplicitProducerAllocatorType( InAllocator ) )
 #endif
     {
     }
@@ -1355,16 +1356,15 @@ public:
 
     template <class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
-    constexpr bool Enqueue( Args&&... args ) {
-        if constexpr ( InitialHashSize == 0 )
-            return false;
-        return InnerEnqueue<AllocMode::CanAlloc>( std::forward<Args>( args )... );
+    constexpr bool EnqueueWithToken( const ProducerToken& Token, Args&&... args ) {
+        return InnerEnqueueWithToken<AllocMode::CanAlloc>( Token, std::forward<Args>( args )... );
     }
 
     template <class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
-    constexpr bool Enqueue( const ProducerToken& Token, Args&&... args ) {
-        return InnerEnqueue<AllocMode::CanAlloc>( Token, std::forward<Args>( args )... );
+    constexpr bool Enqueue( Args&&... args ) {
+        HAKLE_CONSTEXPR_IF( InitialHashSize == 0 ) return false;
+        return InnerEnqueue<AllocMode::CanAlloc>( std::forward<Args>( args )... );
     }
 
     template <HAKLE_CONCEPT( std::input_iterator ) Iterator>
@@ -1382,8 +1382,8 @@ public:
     template <class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
     constexpr bool TryEnqueue( Args&&... args ) {
-        if constexpr ( InitialHashSize == 0 )
-            return false;
+        HAKLE_CONSTEXPR_IF( InitialHashSize == 0 )
+        return false;
         return InnerEnqueue<AllocMode::CannotAlloc>( std::forward<Args>( args )... );
     }
 
@@ -1438,7 +1438,7 @@ public:
     }
 
     template <class U>
-    constexpr bool TryDequeue( const ConsumerToken& Token, U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
+    constexpr bool TryDequeue( ConsumerToken& Token, U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
         if ( Token.DesiredProducer == nullptr || Token.LastKnownGlobalOffset != GlobalExplicitConsumerOffset().load( std::memory_order_relaxed ) ) {
             if ( !UpdateProducerForConsumer( Token ) ) {
                 return false;
@@ -1476,7 +1476,7 @@ public:
     std::size_t TryDequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
         std::size_t Count = 0;
         ForEachProducerWithBreak( [ &ItemFirst, &MaxCount, &Count ]( ProducerListNode* Node ) -> bool {
-            Count += Node->ProducerDequeueBulk( ItemFirst + Count, MaxCount - Count );
+            Count += Node->ProducerDequeueBulk( std::next( ItemFirst, Count ), MaxCount - Count );
             return Count != MaxCount;
         } );
         return Count;
@@ -1496,12 +1496,8 @@ public:
             if ( Token.ItemsConsumed >= EXPLICIT_CONSUMER_CONSUMPTION_QUOTA_BEFORE_ROTATE ) {
                 GlobalExplicitConsumerOffset().fetch_add( 1, std::memory_order_relaxed );
             }
-            return true;
+            return Count;
         }
-
-        MaxCount -= Count;
-
-        std::advance( ItemFirst, Count );
 
         ProducerListNode* Head = ProducerListsHead.load( std::memory_order_acquire );
         ProducerListNode* Node = Token.CurrentProducer->Next;
@@ -1509,7 +1505,7 @@ public:
             Node = Head;
         }
         while ( Node != Token.CurrentProducer ) {
-            std::size_t Dequeued = Node->ProducerDequeueBulk( ItemFirst, MaxCount );
+            std::size_t Dequeued = Node->ProducerDequeueBulk( std::next( ItemFirst, Count ), MaxCount - Count );
             Count += Dequeued;
             if ( Dequeued != 0 ) {
                 Token.CurrentProducer = Node;
@@ -1616,7 +1612,7 @@ public:
 private:
     template <AllocMode Alloc, class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
-    constexpr bool InnerEnqueue( const ProducerToken& Token, Args&&... args ) {
+    constexpr bool InnerEnqueueWithToken( const ProducerToken& Token, Args&&... args ) {
         return Token.ProducerNode->template ProducerEnqueue<Alloc>( std::forward<Args>( args )... );
     }
 
@@ -1688,7 +1684,7 @@ private:
         }
 
         template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
-        constexpr bool ProducerDequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
+        constexpr std::size_t ProducerDequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
             if ( Type == ProducerType::Explicit ) {
                 return GetExplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
             }
@@ -1876,6 +1872,23 @@ private:
 
     HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
 };
+
+#if HAKLE_CPP_VERSION <= 14
+template <class T, class Alloc>
+constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::BlockSize;
+
+template <class T, class Alloc>
+constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::InitialBlockPoolSize;
+
+template <class T, class Alloc>
+constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::InitialHashSize;
+
+template <class T, class Alloc>
+constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::InitialExplicitQueueSize;
+
+template <class T, class Alloc>
+constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::InitialImplicitQueueSize;
+#endif
 
 }  // namespace hakle
 
