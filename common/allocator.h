@@ -156,7 +156,7 @@ public:
         return HAKLE_OPERATOR_NEW( Tp );
     }
     constexpr Pointer Allocate( SizeType n ) {
-        info.AllocateCount += n;
+        info.AllocateCount += static_cast<int>(n);
         return HAKLE_OPERATOR_NEW_ARRAY( Tp, n );
     }
 
@@ -166,7 +166,7 @@ public:
     }
     constexpr void Deallocate( Pointer ptr, HAKLE_MAYBE_UNUSED SizeType n ) noexcept {
         Deallocate( ptr );
-        info.AllocateCount -= n - 1;
+        info.AllocateCount -= static_cast<int>(n - 1);
     }
 
     template <class... Args>
@@ -181,7 +181,7 @@ public:
     }
     constexpr void Destroy( Pointer ptr, SizeType n ) noexcept {
         HAKLE_DESTROY_ARRAY( ptr, n );
-        info.ConstructCount -= n;
+        info.ConstructCount -= static_cast<int>(n);
     }
     constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };

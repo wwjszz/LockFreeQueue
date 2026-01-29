@@ -585,7 +585,7 @@ public:
             SimpleThread                   writer( [ & ]() {
                 for ( int i = 0; i != 1000000; ++i ) {
                     q.Enqueue( i );
-                    for ( volatile int x = 0; x != 100; ++x )
+                    for (  int x = 0; x != 100; ++x )
                         ;
                 }
             } );

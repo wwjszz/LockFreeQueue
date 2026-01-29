@@ -216,7 +216,7 @@ TEST( FastQueueTest, MultiConsumerStressTest ) {
 
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
-        for ( int i = 0; i < N; ++i ) {
+        for ( std::size_t i = 0; i < N; ++i ) {
             while ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 100 ) ) {
                 printf( "enqueue failed\n" );
             }
@@ -227,14 +227,13 @@ TEST( FastQueueTest, MultiConsumerStressTest ) {
     for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
         consumers.emplace_back( [ &queue, N, &total_sum, &count ]() {
             unsigned long long local_sum = 0;
-            int                value;
 
             // 每个消费者一直取，直到取到 N 个元素为止
             while ( count < N * 100 ) {
                 int buffer[ 100 ]{};
                 if ( std::size_t get_count = queue.DequeueBulk( &buffer[ 0 ], 10 ) ) {
                     int sum = 0;
-                    for ( int i = 0; i < get_count; ++i ) {
+                    for ( std::size_t i = 0; i < get_count; ++i ) {
                         sum += buffer[ i ];
                         ++count;
                     }
@@ -268,6 +267,8 @@ struct ExceptionTest {
             throw std::runtime_error( "ExceptionTest" );
         }
     }
+
+    ExceptionTest(ExceptionTest&& other) : value( other.value ) {}
 
     ExceptionTest& operator=( ExceptionTest other ) {
         if ( other.value == 5 ) {
@@ -322,7 +323,6 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
     for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
         consumers.emplace_back( [ &queue, N, &total_sum, &count, &failed ]() {
             unsigned long long local_sum = 0;
-            int                value;
 
             // 每个消费者一直取，直到取到 N 个元素为止
             while ( count < N - ( N / 100 ) ) {
@@ -370,7 +370,7 @@ int main( int argc, char** argv ) {
     ::testing::InitGoogleTest( &argc, argv );
 
     // 打印所有测试开始和结束（可选）
-    ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
+    ::testing::UnitTest::GetInstance()->listeners();
     // 注意：不要删除默认的 listener，否则看不到输出
 
     return RUN_ALL_TESTS();

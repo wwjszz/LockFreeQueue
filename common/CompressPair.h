@@ -18,7 +18,12 @@ struct ValueInitTag {};
 template <class T, bool>
 struct DependentType : T {};
 
-template <class T, int Index, bool CanBeEmptyBase = std::is_empty<T>::value && !std::is_final<T>::value>
+template <class T, int Index,
+          bool CanBeEmptyBase = std::is_empty<T>::value
+#if HAKLE_CPP_VERSION >= 14
+                                && !std::is_final<T>::value
+#endif
+          >
 struct CompressPairElem {
     using Reference      = T&;
     using ConstReference = const T&;
@@ -27,7 +32,7 @@ struct CompressPairElem {
     constexpr explicit CompressPairElem( DefaultInitTag ) {}
     constexpr explicit CompressPairElem( ValueInitTag ) : value() {}
 
-    template <class U, std::enable_if_t<!std::is_same<CompressPairElem, std::decay_t<U>>::value, int> = 0>
+    template <class U, typename std::enable_if<!std::is_same<CompressPairElem, typename std::decay<U>::type>::value, int>::type = 0>
     constexpr explicit CompressPairElem( U&& u ) : value( std::forward<U>( u ) ) {}
 
     Reference      Get() { return value; }
@@ -47,7 +52,7 @@ struct CompressPairElem<T, Index, true> : private T {
     constexpr explicit CompressPairElem( DefaultInitTag ) {}
     constexpr explicit CompressPairElem( ValueInitTag ) : ValueType() {}
 
-    template <class U, std::enable_if_t<!std::is_same<CompressPairElem, std::decay_t<U>>::value, int> = 0>
+    template <class U, typename std::enable_if<!std::is_same<CompressPairElem, typename std::decay<U>::type>::value, int>::type = 0>
     constexpr explicit CompressPairElem( U&& u ) : ValueType( std::forward<U>( u ) ) {}
 
     Reference      Get() { return *this; }
@@ -64,15 +69,15 @@ public:
     using Base1 = CompressPairElem<T1, 0>;
     using Base2 = CompressPairElem<T2, 1>;
 
-    template <bool Dummy = true, std::enable_if_t<DependentType<std::is_default_constructible<T1>, Dummy>::value && DependentType<std::is_default_constructible<T2>, Dummy>::value, int> = 0>
+    template <bool Dummy = true, typename std::enable_if<DependentType<std::is_default_constructible<T1>, Dummy>::value && DependentType<std::is_default_constructible<T2>, Dummy>::value, int>::type = 0>
     constexpr CompressPair() : Base1( ValueInitTag{} ), Base2( ValueInitTag{} ) {}
 
     template <class U1, class U2>
     constexpr CompressPair( U1&& X, U2&& Y ) : Base1( std::forward<U1>( X ) ), Base2( std::forward<U2>( Y ) ) {}
 
-    constexpr typename Base1::Reference      First() { return Base1::Get(); }
+    HAKLE_CPP14_CONSTEXPR typename Base1::Reference      First() { return Base1::Get(); }
     constexpr typename Base1::ConstReference First() const { return Base1::Get(); }
-    constexpr typename Base2::Reference      Second() { return Base2::Get(); }
+    HAKLE_CPP14_CONSTEXPR typename Base2::Reference      Second() { return Base2::Get(); }
     constexpr typename Base2::ConstReference Second() const { return Base2::Get(); }
 
     constexpr static Base1* GetFirstBase( CompressPair* Pair ) noexcept { return static_cast<Base1*>( Pair ); }

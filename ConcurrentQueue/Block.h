@@ -7,7 +7,9 @@
 
 #include <array>
 #include <atomic>
+#if HAKLE_CPP_VERSION >= 17
 #include <bit>
+#endif
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
 #include <cstdio>
 #endif
@@ -162,7 +164,7 @@ struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {
     using Policy::HasMeaningfulSetResult;
     constexpr static std::size_t BlockSize = BLOCK_SIZE;
 
-    constexpr T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
+    HAKLE_CPP14_CONSTEXPR T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
     constexpr const T* operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
 
     alignas( T ) std::array<HAKLE_BYTE, sizeof( T ) * BLOCK_SIZE> Elements{};

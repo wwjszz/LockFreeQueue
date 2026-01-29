@@ -234,7 +234,6 @@ TEST( ConcurrentQueueCorrectness, ProducerToken_Enq_TryDequeueFromProducer ) {
 // 4. ProducerToken BulkEnq / ConsumerToken BulkDeq
 // ---------------------------------------------------------------------
 TEST( ConcurrentQueueCorrectness, ProducerTokenBulkEnq_ConsumerTokenBulkDeq ) {
-    hakle::HakleAllocator<int> t;
     constexpr std::size_t      BULK = 128;
 
     hakle::ConcurrentQueue<Obj> queue;
@@ -508,7 +507,7 @@ int main( int argc, char** argv ) {
     ::testing::InitGoogleTest( &argc, argv );
 
     // 打印所有测试开始和结束（可选）
-    ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
+    ::testing::UnitTest::GetInstance()->listeners();
     // 注意：不要删除默认的 listener，否则看不到输出
 
     return RUN_ALL_TESTS();

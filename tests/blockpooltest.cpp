@@ -91,8 +91,8 @@ TEST_F( BlockPoolTest, ElementAccess ) {
     ASSERT_NE( block, nullptr );
 
     // 测试元素访问
-    for ( size_t i = 0; i < BLOCK_SIZE; ++i ) {
-        HakleAllocator<int>::Construct( ( *block )[ i ], i * 10 );
+    for ( std::size_t i = 0; i < BLOCK_SIZE; ++i ) {
+        HakleAllocator<int>::Construct( ( *block )[ i ], static_cast<int>(i * 10) );
     }
 
     // 验证元素值
@@ -163,8 +163,8 @@ TEST_F( BlockPoolTest, ThreadSafety ) {
                 EXPECT_TRUE( found_slot ) << "Duplicate block allocation detected!";
 
                 // 使用块（模拟一些工作）
-                for ( int i = 0; i < BLOCK_SIZE; ++i ) {
-                    HakleAllocator<int>::Construct( ( *block )[ i ], thread_id * 1000 + i );
+                for ( std::size_t i = 0; i < BLOCK_SIZE; ++i ) {
+                    HakleAllocator<int>::Construct( ( *block )[ i ], static_cast<int>(thread_id * 1000 + i) );
                 }
             }
             else {
@@ -275,7 +275,7 @@ TEST_F( BlockPoolTest, PerformanceLargePool ) {
         ASSERT_NE( block, nullptr );
 
         // 简单操作
-        HakleAllocator<int>::Construct( ( *block )[ 0 ], i );
+        HakleAllocator<int>::Construct( ( *block )[ 0 ], static_cast<int>(i) );
     }
 
     auto end      = std::chrono::high_resolution_clock::now();

@@ -34,22 +34,30 @@
 #define HAKLE_MAYBE_UNUSED [[maybe_unused]]
 #define HAKLE_BYTE std::byte
 #else
+
+#if defined( __GNUC__ ) || defined( __clang__ )
+#define HAKLE_MAYBE_UNUSED __attribute__( ( unused ) )
+#elif defined( _MSC_VER )
+#define HAKLE_MAYBE_UNUSED __pragma( warning( suppress : 4100 4101 ) )
+#else
+#define HAKLE_MAYBE_UNUSED
+#endif
+
 #define HAKLE_CONSTEXPR_IF if
 #define HAKLE_NOEXCEPT( expr ) true
 #define HAKLE_NODISCARD
-#define HAKLE_MAYBE_UNUSED
 #define HAKLE_BYTE unsigned char
 #endif
 
 #if HAKLE_CPP_VERSION >= 20
 #define HAKLE_CPP20_CONSTEXPR constexpr
-#define HAKLE_CPP20_EXPLICIT(...) explicit(__VA_ARGS__)
+#define HAKLE_CPP20_EXPLICIT( ... ) explicit( __VA_ARGS__ )
 #define HAKLE_USE_CONCEPT
 #define HAKLE_CONCEPT( expr ) expr
 #define HAKLE_REQUIRES( ... ) requires __VA_ARGS__
 #else
 #define HAKLE_CPP20_CONSTEXPR
-#define HAKLE_CPP20_EXPLICIT(...) explicit
+#define HAKLE_CPP20_EXPLICIT( ... ) explicit
 #define HAKLE_CONCEPT( expr ) class
 #define HAKLE_REQUIRES( ... )
 #endif

@@ -58,12 +58,13 @@ using MakeIndexSequence = std::make_index_sequence<N>;
 #endif
 
 template <class Fn, class Tuple, std::size_t... Idx>
-constexpr decltype( auto ) ApplyImpl( Fn&& fn, Tuple&& tuple, IndexSequence<Idx...> ) {
+constexpr auto ApplyImpl( Fn&& fn, Tuple&& tuple, IndexSequence<Idx...> ) -> decltype( fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... ) ) {
     return fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... );
 }
 
 template <class Fn, class Tuple>
-constexpr decltype( auto ) Apply( Fn&& fn, Tuple&& tuple ) {
+constexpr auto Apply( Fn&& fn, Tuple&& tuple )
+    -> decltype( ApplyImpl( std::forward<Fn>( fn ), std::forward<Tuple>( tuple ), MakeIndexSequence<std::tuple_size<typename std::remove_reference<Tuple>::type>::value>{} ) ) {
     using Indices = MakeIndexSequence<std::tuple_size<typename std::remove_reference<Tuple>::type>::value>;
     return ApplyImpl( std::forward<Fn>( fn ), std::forward<Tuple>( tuple ), Indices{} );
 }
@@ -90,10 +91,17 @@ inline std::size_t CeilToPow2( std::size_t X ) noexcept {
 
 // TODO: not noly for 64 bit or 32 bit and optimize it
 // used to calculate log2
-inline constexpr uint8_t BitWidth( std::size_t X ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR uint8_t BitWidth( std::size_t X ) noexcept {
     uint8_t Count = 0;
     HAKLE_CONSTEXPR_IF( sizeof( std::size_t ) > 4 ) {
-        if ( X >> 32 ) {
+#if defined( _MSC_VER )
+        // try to avoid C4293
+        // according to https://github.com/MicrosoftDocs/cpp-docs/blob/main/docs/error-messages/compiler-warnings/compiler-warning-level-1-c4293.md
+        if ( static_cast<unsigned __int64>( X ) >> 32 )
+#else
+        if ( X >> 32 )
+#endif
+        {
             Count += 32;
             X >>= 32;
         }
@@ -124,7 +132,7 @@ inline constexpr uint8_t BitWidth( std::size_t X ) noexcept {
         X >>= 1;
     }
 
-    return Count + X;
+    return Count + static_cast<uint8_t>(X);
 }
 
 template <class T1, class T2>

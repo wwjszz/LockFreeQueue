@@ -1,47 +1,56 @@
-﻿cmake_minimum_required(VERSION 3.14)
+﻿cmake_minimum_required(VERSION 3.22)
 project(LockFreeStructures CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -O0 -ggdb")
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Werror")
+    # gcc bug
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=maybe-uninitialized")
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     string(APPEND CMAKE_CXX_FLAGS " /W3 /utf-8")
     # to avoid using the debug runtime library, which is not supported by the static runtime library
-    set(CMAKE_CXX_FLAGS_DEBUG "/MTd /Zi /Ob0 /Od /RTC1")
-endif()
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}/MTd /Zi /Ob0 /Od /RTC1")
+endif ()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     string(APPEND CMAKE_CXX_FLAGS_RELEASE " /O2")
-endif()
+endif ()
 
 include(FetchContent)
 
-# googletest
-FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
-        SOURCE_DIR     ${CMAKE_SOURCE_DIR}/thirdparty/googletest
-)
+macro(fetch_or_use_local name url tag local_dir)
+    # 检查是否存在完整的源码（CMakeLists.txt + .git 目录）
+    if (EXISTS ${local_dir}/CMakeLists.txt AND EXISTS ${local_dir}/.git)
+        message(STATUS "Found existing ${name} at ${local_dir}, skip downloading")
+        add_subdirectory(${local_dir} ${CMAKE_BINARY_DIR}/${name}-build)
+    else ()
+        # 如果目录存在但不完整，先删除
+        if (EXISTS ${local_dir})
+            message(STATUS "Removing incomplete ${name} at ${local_dir}...")
+            file(REMOVE_RECURSE ${local_dir})
+        endif ()
+        message(STATUS "Downloading ${name}...")
+        FetchContent_Declare(${name}
+                GIT_REPOSITORY ${url}
+                GIT_TAG ${tag}
+                SOURCE_DIR ${local_dir}
+        )
+        FetchContent_MakeAvailable(${name})
+    endif ()
+endmacro()
 
-# benchmark
-FetchContent_Declare(
-        benchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG        v1.8.3
-        SOURCE_DIR     ${CMAKE_SOURCE_DIR}/thirdparty/benchmark
-)
+fetch_or_use_local(googletest https://github.com/google/googletest.git v1.14.0 ${CMAKE_SOURCE_DIR}/thirdparty/googletest)
+fetch_or_use_local(benchmark https://github.com/google/benchmark.git v1.9.0 ${CMAKE_SOURCE_DIR}/thirdparty/benchmark)
 
-FetchContent_MakeAvailable(googletest benchmark)
+set(BENCHMARK_ENABLE_TESTING off)  # to suppress benchmark internal tests
 
 # ============================================================================
 # Compiler Options
@@ -75,7 +84,6 @@ include_directories(${PROJECT_SOURCE_DIR}/)
 
 add_executable(normaltest
         tests/test.cpp
-        tests/simplethread.cpp
 )
 
 add_executable(unittest
@@ -97,8 +105,8 @@ target_link_libraries(hashtabletest PRIVATE gtest_main)
 add_executable(freelisttest tests/freelisttest.cpp)
 target_link_libraries(freelisttest PRIVATE gtest_main)
 
- add_executable(blockpooltest tests/blockpooltest.cpp)
- target_link_libraries(blockpooltest PRIVATE gtest_main)
+add_executable(blockpooltest tests/blockpooltest.cpp)
+target_link_libraries(blockpooltest PRIVATE gtest_main)
 
 add_executable(fastqueuetest tests/fastqueuetest.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(fastqueuetest PRIVATE gtest_main)
@@ -123,11 +131,11 @@ target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECT
 
 if (CMAKE_CXX_STANDARD EQUAL 11)
 
-endif()
+endif ()
 
 add_executable(other_test tests/other_test.cpp)
 target_link_libraries(other_test PRIVATE gtest_main)
-    # target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
+# target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
 
 add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
 target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)

@@ -643,7 +643,7 @@ Result TestFastQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
 
     int* values = new int[ cfg.itemsPerProd ];
     for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
-        values[ i ] = i;
+        values[ i ] = static_cast<int>(i);
     }
 
     double seconds = MeasureSeconds( [ & ] {
@@ -691,7 +691,7 @@ Result TestSlowQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
 
     int* values = new int[ cfg.itemsPerProd ];
     for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
-        values[ i ] = i;
+        values[ i ] = static_cast<int>(i);
     }
 
     double seconds = MeasureSeconds( [ & ] {

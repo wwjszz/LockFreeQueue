@@ -1313,7 +1313,14 @@ public:
     // Never allocates. Thread-safe.
     template <typename U>
     inline bool try_dequeue_from_producer( producer_token_t const& producer, U& item ) {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
         return static_cast<ExplicitProducer*>( producer.producer )->dequeue( item );
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
     }
 
     // Attempts to dequeue several elements from a specific producer's inner queue.
@@ -1978,7 +1985,7 @@ private:
                     auto offset =
                         static_cast<size_t>( static_cast<typename std::make_signed<index_t>::type>( blockBaseIndex - headBase ) / static_cast<typename std::make_signed<index_t>::type>( BLOCK_SIZE ) );
                     if ( blockBaseIndex > headBase ) {
-                        printf( "blockBaseIndex: %d - headBase: %d > 0\n", blockBaseIndex, headBase );
+                        printf( "blockBaseIndex: %llu - headBase: %llu > 0\n", blockBaseIndex, headBase );
                     }
                     auto block = localBlockIndex->entries[ ( localBlockIndexHead + offset ) & ( localBlockIndex->size - 1 ) ].block;
 

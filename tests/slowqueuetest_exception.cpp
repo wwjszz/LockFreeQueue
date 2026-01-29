@@ -252,7 +252,7 @@ int main( int argc, char** argv ) {
     ::testing::InitGoogleTest( &argc, argv );
 
     // 打印所有测试开始和结束（可选）
-    ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
+    ::testing::UnitTest::GetInstance()->listeners();
     // 注意：不要删除默认的 listener，否则看不到输出
 
     return RUN_ALL_TESTS();

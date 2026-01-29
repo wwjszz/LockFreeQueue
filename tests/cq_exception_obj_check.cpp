@@ -150,13 +150,12 @@ TEST( ConcurrentQueueCorrectness, MultiProducerMultiConsumer_BulkEnqDeq ) {
 
     std::vector<std::thread> producers, consumers;
     std::vector<int>         buf( itemsPerProd );
-    for ( int i = 0; i < itemsPerProd; ++i )
-        buf[ i ] = i;
+    for ( std::size_t i = 0; i < itemsPerProd; ++i )
+        buf[ i ] = static_cast<int>(i);
 
     // producers
     for ( std::size_t p = 0; p < prodThreads; ++p ) {
         producers.emplace_back( [ &, p ] {
-            int val = 0;
 
             std::size_t sent = 0;
             while ( sent < itemsPerProd ) {
@@ -276,7 +275,6 @@ TEST( ConcurrentQueueCorrectness, ProducerToken_Enq_TryDequeueFromProducer ) {
 // 4. ProducerToken BulkEnq / ConsumerToken BulkDeq
 // ---------------------------------------------------------------------
 TEST( ConcurrentQueueCorrectness, ProducerTokenBulkEnq_ConsumerTokenBulkDeq ) {
-    hakle::HakleAllocator<int> t;
 
     hakle::ConcurrentQueue<Obj> queue;
 
@@ -298,13 +296,12 @@ TEST( ConcurrentQueueCorrectness, ProducerTokenBulkEnq_ConsumerTokenBulkDeq ) {
 
     std::vector<std::thread> producers, consumers;
     std::vector<int>         buf( itemsPerProd );
-    for ( int i = 0; i < itemsPerProd; ++i )
-        buf[ i ] = i;
+    for ( std::size_t i = 0; i < itemsPerProd; ++i )
+        buf[ i ] = static_cast<int>(i);
     // producers
     for ( std::size_t p = 0; p < prodThreads; ++p ) {
         producers.emplace_back( [ &, p ] {
             auto& token = prodTokens[ p ];
-            int   val   = 0;
 
             std::size_t sent = 0;
             while ( sent < itemsPerProd ) {
@@ -435,13 +432,12 @@ TEST( ConcurrentQueueCorrectness, NormalBulkEnq_ConsumerTokenBulkDeq ) {
     std::vector<std::thread> consumers;
 
     std::vector<int> buf( itemsPerProd );
-    for ( int i = 0; i < itemsPerProd; ++i )
-        buf[ i ] = i;
+    for ( std::size_t i = 0; i < itemsPerProd; ++i )
+        buf[ i ] = static_cast<int>(i);
 
     // producers
     for ( std::size_t p = 0; p < prodThreads; ++p ) {
         producers.emplace_back( [ &, p ] {
-            int val = 0;
 
             std::size_t sent = 0;
             while ( sent < itemsPerProd ) {
@@ -568,7 +564,7 @@ int main( int argc, char** argv ) {
     ::testing::InitGoogleTest( &argc, argv );
 
     // 打印所有测试开始和结束（可选）
-    ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
+    ::testing::UnitTest::GetInstance()->listeners();
     // 注意：不要删除默认的 listener，否则看不到输出
 
     return RUN_ALL_TESTS();

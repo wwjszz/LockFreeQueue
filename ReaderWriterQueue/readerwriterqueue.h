@@ -33,8 +33,7 @@ namespace hakle {
 template <class T>
     requires std::is_integral_v<T> || std::is_floating_point_v<T> || std::is_pointer_v<T>
 #else
-template <class T,
-          typename std::enable_if<std::is_integral<T>::value || std::is_floating_point<T>::value || std::is_pointer<T>::value, int>::type = 0>
+template <class T, typename std::enable_if<std::is_integral<T>::value || std::is_floating_point<T>::value || std::is_pointer<T>::value, int>::type = 0>
 #endif
 class WeakAtomic {
 public:
@@ -80,9 +79,7 @@ public:
 
     T FetchAddAcquire( T Increment ) noexcept { return Value.fetch_add( Increment, std::memory_order_acquire ); }
 
-    bool CompareExchangeStrong( T& Expected, T Desired ) noexcept {
-        return Value.compare_exchange_strong( Expected, Desired, std::memory_order_relaxed );
-    }
+    bool CompareExchangeStrong( T& Expected, T Desired ) noexcept { return Value.compare_exchange_strong( Expected, Desired, std::memory_order_relaxed ); }
 
 private:
     std::atomic<T> Value;
@@ -194,12 +191,12 @@ public:
 
     ReaderWriterQueue& operator=( const ReaderWriterQueue& ) = delete;
 
-    HAKLE_NODISCARD bool TryEnqueue( const T& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( Item ); }
+    bool TryEnqueue( const T& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( Item ); }
 
-    HAKLE_NODISCARD bool TryEnqueue( T&& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( std::move( Item ) ); }
+    bool TryEnqueue( T&& Item ) { return InnerEnqueue<AllocMode::CannotAlloc>( std::move( Item ) ); }
 
     template <class... Args>
-    HAKLE_NODISCARD bool TryEmplace( Args&&... Params ) {
+    bool TryEmplace( Args&&... Params ) {
         return InnerEnqueue<AllocMode::CannotAlloc>( std::forward<Args>( Params )... );
     }
 
@@ -213,7 +210,7 @@ public:
     }
 
     template <class U>
-    HAKLE_NODISCARD bool TryDequeue( U& Result ) noexcept {
+    bool TryDequeue( U& Result ) noexcept {
 #ifndef NDEBUG
         QueueGuard DequeueGuard( DequeueStatus );
 #endif
@@ -495,15 +492,13 @@ private:
         const std::size_t SizeMask;
 
 #if HAKLE_CPP_VERSION >= 17
-        Block( const std::size_t Size, T* InData ) noexcept
-            : Front( 0 ), LocalTail( 0 ), Tail( 0 ), LocalFront( 0 ), Next( nullptr ), Data( InData ), SizeMask( Size - 1 ) {}
+        Block( const std::size_t Size, T* InData ) noexcept : Front( 0 ), LocalTail( 0 ), Tail( 0 ), LocalFront( 0 ), Next( nullptr ), Data( InData ), SizeMask( Size - 1 ) {}
 #else
         char* RawThis;
         char* RawData;
 
         Block( const std::size_t Size, char* InRawThis, char* InRawData, T* InData ) noexcept
-            : Front( 0 ), LocalTail( 0 ), Tail( 0 ), LocalFront( 0 ), Next( nullptr ), Data( InData ), SizeMask( Size - 1 ), RawThis( InRawThis ),
-              RawData( InRawData ) {}
+            : Front( 0 ), LocalTail( 0 ), Tail( 0 ), LocalFront( 0 ), Next( nullptr ), Data( InData ), SizeMask( Size - 1 ), RawThis( InRawThis ), RawData( InRawData ) {}
 #endif
 
         ~Block() {
@@ -968,7 +963,7 @@ public:
 
     bool TryDequeue( T& Result ) {
         if ( Sem->TryWait() ) {
-            bool Success = Inner.TryDequeue( Result );
+            HAKLE_MAYBE_UNUSED bool Success = Inner.TryDequeue( Result );
             assert( Success );
             return true;
         }
@@ -977,7 +972,7 @@ public:
 
     bool Dequeue( T& Result ) {
         if ( Sem->Wait() ) {
-            bool Success = Inner.TryDequeue( Result );
+            HAKLE_MAYBE_UNUSED bool Success = Inner.TryDequeue( Result );
             assert( Success );
             return true;
         }
@@ -986,7 +981,7 @@ public:
 
     bool DequeueWaitFor( T& Result, std::int64_t Timeout ) {
         if ( Sem->Wait( Timeout ) ) {
-            bool Success = Inner.TryDequeue( Result );
+            HAKLE_MAYBE_UNUSED bool Success = Inner.TryDequeue( Result );
             assert( Success );
             return true;
         }
@@ -997,7 +992,7 @@ public:
 
     bool Pop() noexcept {
         if ( Sem->TryWait() ) {
-            bool Success = Inner.Pop();
+            HAKLE_MAYBE_UNUSED bool Success = Inner.Pop();
             assert( Success );
             return true;
         }

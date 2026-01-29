@@ -56,7 +56,7 @@ static void BM_CQ_NormalEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -100,7 +100,7 @@ static void BM_CQ_BulkEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -158,7 +158,7 @@ static void BM_CQ_ProdToken_EnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> consumed{ 0 };
         std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -211,7 +211,7 @@ static void BM_CQ_ProdToken_BulkEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> consumed{ 0 };
         std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -270,7 +270,7 @@ static void BM_CQ_ProdTokenEnq_ConsTokenDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -314,7 +314,7 @@ static void BM_CQ_NormalEnq_ConsTokenDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -363,7 +363,7 @@ static void BM_CQ_ProdTokenBulkEnq_ConsTokenBulkDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -416,7 +416,7 @@ static void BM_CQ_NormalBulkEnq_ConsTokenBulkDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -472,7 +472,7 @@ static void BM_MOODY_NormalEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -514,7 +514,7 @@ static void BM_MOODY_BulkEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -572,7 +572,7 @@ static void BM_MOODY_ProdToken_EnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> consumed{ 0 };
         std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -625,7 +625,7 @@ static void BM_MOODY_ProdToken_BulkEnqDeq( benchmark::State& state ) {
         std::atomic<std::size_t> consumed{ 0 };
         std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -684,7 +684,7 @@ static void BM_MOODY_ProdTokenEnq_ConsTokenDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -728,7 +728,7 @@ static void BM_MOODY_NormalEnq_ConsTokenDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -777,7 +777,7 @@ static void BM_MOODY_ProdTokenBulkEnq_ConsTokenBulkDeq( benchmark::State& state 
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 
@@ -830,7 +830,7 @@ static void BM_MOODY_NormalBulkEnq_ConsTokenBulkDeq( benchmark::State& state ) {
         std::atomic<std::size_t> produced{ 0 };
         std::atomic<std::size_t> consumed{ 0 };
 
-        auto start = std::chrono::steady_clock::now();
+
 
         std::vector<std::thread> producers, consumers;
 

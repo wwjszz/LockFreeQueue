@@ -421,7 +421,7 @@ TEST_F( HashTableTest, StressTest ) {
 
     std::vector<std::thread> threads;
 
-    auto worker = [ duration_seconds, this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]( int thread_id ) {
+    auto worker = [ duration_seconds, this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]( ) {
         std::random_device              rd;
         std::mt19937                    gen( rd() );
         std::uniform_int_distribution<> op_dis( 0, 100 );
@@ -462,7 +462,7 @@ TEST_F( HashTableTest, StressTest ) {
     };
 
     for ( int i = 0; i < num_threads; ++i ) {
-        threads.emplace_back( worker, i );
+        threads.emplace_back( worker);
     }
 
     std::this_thread::sleep_for( std::chrono::seconds( duration_seconds ) );

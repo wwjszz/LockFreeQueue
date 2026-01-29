@@ -6,7 +6,6 @@
 #define HashTable_H
 
 #include <atomic>
-#include <concepts>
 
 #include "common/CompressPair.h"
 #include "common/allocator.h"
@@ -15,6 +14,8 @@
 
 #ifndef HAKLE_USE_CONCEPT
 #include <assert.h>
+#else
+#include <concepts>
 #endif
 
 namespace hakle {
@@ -35,7 +36,7 @@ namespace core {
 
     template <>
     struct HashDispatch<4> {
-        constexpr static uint32_t Hash( uint32_t Key ) noexcept {
+        HAKLE_CPP14_CONSTEXPR static uint32_t Hash( uint32_t Key ) noexcept {
             // MurmurHash3 finalizer -- see https://code.google.com/p/smhasher/source/browse/trunk/MurmurHash3.cpp
             // Since the thread ID is already unique, all we really want to do is propagate that
             // uniqueness evenly across all the bits, so that we can use a subset of the bits while
@@ -50,7 +51,7 @@ namespace core {
 
     template <>
     struct HashDispatch<8> {
-        constexpr static uint64_t Hash( uint64_t Key ) noexcept {
+        HAKLE_CPP14_CONSTEXPR static uint64_t Hash( uint64_t Key ) noexcept {
             Key ^= Key >> 33;
             Key *= 0xff51afd7ed558ccd;
             Key ^= Key >> 33;
@@ -66,7 +67,7 @@ namespace core {
 
     template <HAKLE_CONCEPT( std::integral ) T>
     struct Hash {
-        constexpr T operator()( T X ) const noexcept { return HashImpl<T>::Hash( X ); }
+        HAKLE_CPP14_CONSTEXPR T operator()( T X ) const noexcept { return HashImpl<T>::Hash( X ); }
     };
 
 }  // namespace core
@@ -104,7 +105,7 @@ private:
 public:
     using Entry = Pair<std::atomic<TKey>, std::atomic<TValue>>;
 
-    explicit constexpr HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ), INVALID_KEY( InValidKey ) {
+    explicit HAKLE_CPP14_CONSTEXPR HashTable( TKey InValidKey = TKey{}, const Allocator& InAllocator = Allocator{} ) : PairAllocatorPair( ValueInitTag{}, InAllocator ), INVALID_KEY( InValidKey ) {
 #ifndef HAKLE_USE_CONCEPT
         assert( std::atomic<TValue>{}.is_lock_free() );
 #endif
@@ -117,7 +118,7 @@ public:
 
     constexpr HashTable( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    constexpr HashTable( HashTable&& Other ) noexcept {
+    HAKLE_CPP14_CONSTEXPR HashTable( HashTable&& Other ) noexcept {
         core::SwapRelaxed( EntriesCount, Other.EntriesCount );
         core::SwapRelaxed( MainHash(), Other.MainHash() );
         using std::swap;
@@ -127,7 +128,7 @@ public:
 
     constexpr HashTable& operator=( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    constexpr HashTable& operator=( HashTable&& Other ) noexcept {
+    HAKLE_CPP14_CONSTEXPR HashTable& operator=( HashTable&& Other ) noexcept {
         Clear();
         MainHash().store( nullptr, std::memory_order_relaxed );
         EntriesCount.store( 0, std::memory_order_relaxed );
@@ -135,7 +136,7 @@ public:
         return *this;
     }
 
-    constexpr void Clear() noexcept {
+    HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         auto CurrentHash = MainHash().load( std::memory_order_relaxed );
         while ( CurrentHash != nullptr ) {
             auto Prev = CurrentHash->Prev;
@@ -145,7 +146,7 @@ public:
     }
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    constexpr void swap( HashTable& Other ) noexcept {
+    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept {
         // can't swap during resizing.
         if ( &Other != this ) {
             core::SwapRelaxed( EntriesCount, Other.EntriesCount );
@@ -153,7 +154,7 @@ public:
         }
     }
 
-    constexpr bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
+    HAKLE_CPP14_CONSTEXPR bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
         if ( Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash ) ) {
             OutValue = CurrentEntry->Second.load( std::memory_order_acquire );
@@ -162,7 +163,7 @@ public:
         return false;
     }
 
-    constexpr bool Set( const TKey& Key, const TValue& Value ) noexcept {
+    HAKLE_CPP14_CONSTEXPR bool Set( const TKey& Key, const TValue& Value ) noexcept {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -176,7 +177,7 @@ public:
     }
 
     // OutValue will be set when Get is successful
-    constexpr HashTableStatus GetOrAdd( const TKey& Key, TValue& OutValue, const TValue& InValue ) {
+    HAKLE_CPP14_CONSTEXPR HashTableStatus GetOrAdd( const TKey& Key, TValue& OutValue, const TValue& InValue ) {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -196,7 +197,7 @@ public:
 
     template <class F, class... Args>
     HAKLE_REQUIRES( std::is_pointer_v<TValue> )
-    constexpr HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
+    HAKLE_CPP14_CONSTEXPR HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
         HashNode* CurrentMainHash = MainHash().load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -253,7 +254,7 @@ private:
         Entry*      Entries{ nullptr };
     };
 
-    constexpr Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
+    HAKLE_CPP14_CONSTEXPR Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
         std::size_t HashId = Hash( Key );
         for ( HashNode* CurrentHash = CurrentMainHash; CurrentHash != nullptr; CurrentHash = CurrentHash->Prev ) {
             std::size_t Index = HashId;
@@ -291,7 +292,7 @@ private:
         return nullptr;
     }
 
-    constexpr bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
+    HAKLE_CPP14_CONSTEXPR bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
         std::size_t NewCount = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
 
         while ( true ) {
@@ -350,15 +351,15 @@ private:
     HashType Hash{};
     TKey     INVALID_KEY{};
 
-    constexpr PairAllocatorType& PairAllocator() noexcept { return PairAllocatorPair.Second(); }
-    constexpr NodeAllocatorType& NodeAllocator() noexcept { return NodeAllocatorPair.Second(); }
+    HAKLE_CPP14_CONSTEXPR PairAllocatorType& PairAllocator() noexcept { return PairAllocatorPair.Second(); }
+    HAKLE_CPP14_CONSTEXPR NodeAllocatorType& NodeAllocator() noexcept { return NodeAllocatorPair.Second(); }
 
     constexpr const PairAllocatorType& PairAllocator() const noexcept { return PairAllocatorPair.Second(); }
     constexpr const NodeAllocatorType& NodeAllocator() const noexcept { return NodeAllocatorPair.Second(); }
 
     // producer only fields
-    constexpr std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
-    constexpr std::atomic<HashNode*>& MainHash() noexcept { return NodeAllocatorPair.First(); }
+    HAKLE_CPP14_CONSTEXPR std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
+    HAKLE_CPP14_CONSTEXPR std::atomic<HashNode*>& MainHash() noexcept { return NodeAllocatorPair.First(); }
 
     HAKLE_NODISCARD constexpr const std::atomic_flag&       HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const std::atomic<HashNode*>& MainHash() const noexcept { return NodeAllocatorPair.First(); }
