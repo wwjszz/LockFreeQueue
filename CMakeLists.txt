@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Werror")
+    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Werror -Wno-error=self-move")
     # gcc bug
     string(APPEND CMAKE_CXX_FLAGS " -Wno-error=maybe-uninitialized")
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -128,10 +128,6 @@ target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
 
 target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-
-if (CMAKE_CXX_STANDARD EQUAL 11)
-
-endif ()
 
 add_executable(other_test tests/other_test.cpp)
 target_link_libraries(other_test PRIVATE gtest_main)

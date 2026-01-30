@@ -841,7 +841,7 @@ public:
 #pragma warning( disable : 4307 )  // + integral constant overflow (that's what the ternary expression is for!)
 #pragma warning( disable : 4309 )  // static_cast: Truncation of constant value
 #endif
-    static const size_t MAX_SUBQUEUE_SIZE = ( details::const_numeric_max<size_t>::value - static_cast<size_t>( Traits::MAX_SUBQUEUE_SIZE ) < BLOCK_SIZE )
+    static const size_t     MAX_SUBQUEUE_SIZE = ( details::const_numeric_max<size_t>::value - static_cast<size_t>( Traits::MAX_SUBQUEUE_SIZE ) < BLOCK_SIZE )
                                                 ? details::const_numeric_max<size_t>::value
                                                 : ( ( static_cast<size_t>( Traits::MAX_SUBQUEUE_SIZE ) + ( BLOCK_SIZE - 1 ) ) / BLOCK_SIZE * BLOCK_SIZE );
 #ifdef _MSC_VER

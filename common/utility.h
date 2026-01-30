@@ -12,6 +12,76 @@
 
 namespace hakle {
 
+#define HAKLE_SEM ;
+
+#if HAKLE_CPP_VERSION >= 20
+
+// support 256 levels
+#define HAKLE_EXPAND( ... ) HAKLE_EXPAND4( HAKLE_EXPAND4( HAKLE_EXPAND4( HAKLE_EXPAND4( __VA_ARGS__ ) ) ) )
+#define HAKLE_EXPAND4( ... ) HAKLE_EXPAND3( HAKLE_EXPAND3( HAKLE_EXPAND3( HAKLE_EXPAND3( __VA_ARGS__ ) ) ) )
+#define HAKLE_EXPAND3( ... ) HAKLE_EXPAND2( HAKLE_EXPAND2( HAKLE_EXPAND2( HAKLE_EXPAND2( __VA_ARGS__ ) ) ) )
+#define HAKLE_EXPAND2( ... ) HAKLE_EXPAND1( HAKLE_EXPAND1( HAKLE_EXPAND1( HAKLE_EXPAND1( __VA_ARGS__ ) ) ) )
+#define HAKLE_EXPAND1( ... ) __VA_ARGS__
+
+#define HAKLE_FOR_EACH( macro, concat, ... ) __VA_OPT__( HAKLE_EXPAND( HAKLE_FOR_EACH_IMPL( macro, concat, __VA_ARGS__ ) ) )
+#define HAKLE_FOR_EACH_IMPL( macro, concat, first, ... ) macro( first ) __VA_OPT__( concat HAKLE_FOR_EACH_IMPL_ HAKLE_PAREN( macro, concat, __VA_ARGS__ ) )
+
+#define HAKLE_FOR_EACH_COMMA( macro, ... ) __VA_OPT__( HAKLE_EXPAND( HAKLE_FOR_EACH_IMPL_COMMA( macro, __VA_ARGS__ ) ) )
+#define HAKLE_FOR_EACH_IMPL_COMMA( macro, first, ... ) macro( first ) __VA_OPT__(, HAKLE_FOR_EACH_IMPL_COMMA_ HAKLE_PAREN( macro, __VA_ARGS__ ) )
+
+#define HAKLE_PAREN ()
+#define HAKLE_FOR_EACH_IMPL_() HAKLE_FOR_EACH_IMPL
+#define HAKLE_FOR_EACH_IMPL_COMMA_() HAKLE_FOR_EACH_IMPL_COMMA
+
+#else
+
+// support 10 levels
+#define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_7( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_6( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_6( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_5( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_5( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_4( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_4( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_3( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_3( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_2( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_2( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_1( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_1( macro, concat, first ) macro( first )
+#define HAKLE_EXPAND_0( macro, concat )
+
+#define HAKLE_EXPAND_COMMA_10( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_9( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_9( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_8( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_8( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_7( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_7( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_6( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_6( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_5( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_5( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_4( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_4( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_3( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_3( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_2( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_2( macro, first, ... ) macro( first ), HAKLE_EXPAND_COMMA_1( macro, __VA_ARGS__ )
+#define HAKLE_EXPAND_COMMA_1( macro, first ) macro( first )
+#define HAKLE_EXPAND_COMMA_0( macro )
+
+#define HAKLE_EXPAND_CONCAT(x) x
+
+#define HAKLE_ARGS_COUNT( ... ) HAKLE_ARGS_COUNT_IMPL( __VA_ARGS__, 5, 4, 3, 2, 1, 0 )
+#define HAKLE_ARGS_COUNT_IMPL( _1, _2, _3, _4, _5, N, ... ) N
+
+#define HAKLE_CONCAT_( a, b ) a##b
+#define HAKLE_CONCAT( a, b ) HAKLE_CONCAT_( a, b )
+
+#define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, HAKLE_EXPAND_CONCAT(concat), __VA_ARGS__ )
+#define HAKLE_FOR_EACH_COMMA( macro, ... ) HAKLE_CONCAT( HAKLE_EXPAND_COMMA_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, __VA_ARGS__ )
+
+#endif
+
+#define HAKLE_MOVE_ATOMIC( X ) X( std::move( Other.X.load( std::memory_order_relaxed ) ) )
+#define HAKLE_MOVE( X ) X( std::move( Other.X ) )
+#define HAKLE_MOVE_PAIR_ATOMIC1( X ) X( std::move( Other.X.First().load( std::memory_order_relaxed ) ), std::move( Other.X.Second() ) )
+#define HAKLE_OP_MOVE( X ) X = std::move( Other.X )
+#define HAKLE_OP_MOVE_ATOMIC( X ) X.store( std::move( Other.X.load( std::memory_order_relaxed ) ), std::memory_order_relaxed )
+#define HAKLE_OP_MOVE_ELEM( X ) X() = std::move( Other.X() )
+#define HAKLE_OP_MOVE_ATOMIC_ELEM( X ) X().store( std::move( Other.X().load( std::memory_order_relaxed ) ), std::memory_order_relaxed )
+
+
 #if HAKLE_CPP_VERSION < 17
 
 #if HAKLE_CPP_VERSION < 14
@@ -56,6 +126,9 @@ using IndexSequence = std::index_sequence<Is...>;
 template <std::size_t N>
 using MakeIndexSequence = std::make_index_sequence<N>;
 #endif
+
+
+
 
 template <class Fn, class Tuple, std::size_t... Idx>
 constexpr auto ApplyImpl( Fn&& fn, Tuple&& tuple, IndexSequence<Idx...> ) -> decltype( fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... ) ) {
@@ -132,7 +205,7 @@ inline HAKLE_CPP14_CONSTEXPR uint8_t BitWidth( std::size_t X ) noexcept {
         X >>= 1;
     }
 
-    return Count + static_cast<uint8_t>(X);
+    return Count + static_cast<uint8_t>( X );
 }
 
 template <class T1, class T2>

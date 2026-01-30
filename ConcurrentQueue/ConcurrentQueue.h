@@ -25,7 +25,6 @@
 #include "common/common.h"
 #include "common/utility.h"
 
-
 namespace hakle {
 
 namespace details {
@@ -94,6 +93,27 @@ public:
     constexpr explicit _QueueBase( const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept : ValueAllocatorPair( nullptr, InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~_QueueBase() = default;
 
+    HAKLE_CPP14_CONSTEXPR _QueueBase( _QueueBase&& Other ) noexcept : HAKLE_FOR_EACH_COMMA( HAKLE_MOVE_ATOMIC, HeadIndex, TailIndex, DequeueAttemptsCount, DequeueFailedCount, ValueAllocatorPair ) {}
+
+    HAKLE_CPP14_CONSTEXPR _QueueBase& operator=( _QueueBase&& Other ) noexcept {
+        if ( this != &Other ) {
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE_ATOMIC, HAKLE_SEM, HeadIndex, TailIndex, DequeueAttemptsCount, DequeueFailedCount );
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, ValueAllocatorPair );
+        }
+        return *this;
+    }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        HeadIndex.store( 0, std::memory_order_relaxed );
+        TailIndex.store( 0, std::memory_order_relaxed );
+        DequeueAttemptsCount.store( 0, std::memory_order_relaxed );
+        DequeueFailedCount.store( 0, std::memory_order_relaxed );
+        TailBlock() = nullptr;
+    }
+
+    _QueueBase( const _QueueBase& Other )            = delete;
+    _QueueBase& operator=( const _QueueBase& Other ) = delete;
+
     HAKLE_NODISCARD constexpr std::size_t Size() const noexcept {
         std::size_t Tail = TailIndex.load( std::memory_order_relaxed );
         std::size_t Head = HeadIndex.load( std::memory_order_relaxed );
@@ -133,7 +153,7 @@ public:
 
 private:
 #if HAKLE_CPP_VERSION >= 17
-    HAKLE_CPP14_CONSTEXPR static std::size_t BlockSizeLog2      = BitWidth( BlockSize ) - 1;
+    HAKLE_CPP14_CONSTEXPR static std::size_t BlockSizeLog2 = BitWidth( BlockSize ) - 1;
 #else
     static std::size_t BlockSizeLog2;
 #endif
@@ -158,7 +178,29 @@ public:
         CreateNewBlockIndexArray( 0 );
     }
 
-    HAKLE_CPP20_CONSTEXPR ~FastQueue() {
+    HAKLE_CPP20_CONSTEXPR ~FastQueue() noexcept { Clear(); }
+
+    HAKLE_CPP14_CONSTEXPR FastQueue( FastQueue&& Other ) noexcept
+        : Base( std::move( Other ) ), HAKLE_MOVE_ATOMIC( CurrentIndexEntryArray ),
+          HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, BlockManager, PO_NextIndexEntry, PO_PrevEntries, IndexEntryAllocatorPair, IndexEntryArrayAllocatorPair ) {
+        Other.Reset();
+    }
+
+    HAKLE_CPP14_CONSTEXPR FastQueue& operator=( FastQueue&& Other ) noexcept {
+        if ( this != &Other ) {
+            Clear();
+            Base::operator=( std::move( Other ) );
+            HAKLE_OP_MOVE_ATOMIC( CurrentIndexEntryArray );
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, BlockManager, PO_NextIndexEntry, PO_PrevEntries, IndexEntryAllocatorPair, IndexEntryArrayAllocatorPair );
+            Other.Reset();
+        }
+        return *this;
+    }
+
+    FastQueue( const FastQueue& Other )            = delete;
+    FastQueue& operator=( const FastQueue& Other ) = delete;
+
+    HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         if ( this->TailBlock() != nullptr ) {
             // first, we find the first block that's half dequeued
             BlockType* HalfDequeuedBlock = nullptr;
@@ -209,6 +251,15 @@ public:
             IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator(), Current );
             Current = Prev;
         }
+    }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        Base::Reset();
+        CurrentIndexEntryArray.store( nullptr, std::memory_order_relaxed );
+        PO_NextIndexEntry     = 0;
+        PO_PrevEntries        = nullptr;
+        PO_IndexEntriesUsed() = 0;
+        PO_IndexEntriesSize() = 0;
     }
 
     // Enqueue, SPMC queue only supports one producer
@@ -660,6 +711,8 @@ private:
 
     // Block Manager
     BlockManagerType& BlockManager{};
+    std::size_t       PO_NextIndexEntry{};
+    IndexEntry*       PO_PrevEntries{ nullptr };
 
     // compressed allocator
     CompressPair<std::size_t, IndexEntryAllocatorType>      IndexEntryAllocatorPair{};
@@ -677,9 +730,6 @@ private:
 
     HAKLE_NODISCARD constexpr const std::size_t& PO_IndexEntriesUsed() const noexcept { return IndexEntryAllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const std::size_t& PO_IndexEntriesSize() const noexcept { return IndexEntryArrayAllocatorPair.First(); }
-
-    std::size_t PO_NextIndexEntry{};
-    IndexEntry* PO_PrevEntries{ nullptr };
 };
 
 template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE = HakleCounterBlock<T, BLOCK_SIZE>,
@@ -698,11 +748,11 @@ public:
 
 private:
 #if HAKLE_CPP_VERSION >= 17
-    HAKLE_CPP14_CONSTEXPR static std::size_t BlockSizeLog2      = BitWidth( BlockSize ) - 1;
+    HAKLE_CPP14_CONSTEXPR static std::size_t BlockSizeLog2 = BitWidth( BlockSize ) - 1;
 #else
     static std::size_t BlockSizeLog2;
 #endif
-    constexpr static std::size_t             INVALID_BLOCK_BASE = 1;
+    constexpr static std::size_t INVALID_BLOCK_BASE = 1;
 
     struct IndexEntry;
     struct IndexEntryArray;
@@ -727,7 +777,28 @@ public:
         CreateNewBlockIndexArray();
     }
 
-    HAKLE_CPP20_CONSTEXPR ~SlowQueue() {
+    HAKLE_CPP20_CONSTEXPR ~SlowQueue() { Clear(); }
+
+    HAKLE_CPP14_CONSTEXPR SlowQueue( SlowQueue&& Other ) noexcept
+        : Base( std::move( Other ) ), HAKLE_MOVE_PAIR_ATOMIC1( IndexEntryAllocatorPair ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, IndexEntryArrayAllocatorPair, IndexEntryPointerAllocatorPair ) {
+        Other.Reset();
+    }
+
+    HAKLE_CPP14_CONSTEXPR SlowQueue& operator=( SlowQueue&& Other ) noexcept {
+        if ( this != &Other ) {
+            Clear();
+            Base::operator=( std::move( Other ) );
+            HAKLE_OP_MOVE_ATOMIC_ELEM( CurrentIndexEntryArray );
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, IndexEntryAllocator(), IndexEntryArrayAllocatorPair, IndexEntryPointerAllocatorPair );
+            Other.Reset();
+        }
+        return *this;
+    }
+
+    SlowQueue( const SlowQueue& )            = delete;
+    SlowQueue& operator=( const SlowQueue& ) = delete;
+
+    HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         std::size_t Index = this->HeadIndex.load( std::memory_order_relaxed );
         std::size_t Tail  = this->TailIndex.load( std::memory_order_relaxed );
 
@@ -762,6 +833,12 @@ public:
                 CurrentArray = Prev;
             }
         }
+    }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        Base::Reset();
+        CurrentIndexEntryArray().store( nullptr, std::memory_order_relaxed );
+        IndexEntriesSize() = 0;
     }
 
     template <AllocMode Mode, class... Args>
@@ -1314,37 +1391,25 @@ public:
     {
     }
 
-    HAKLE_CPP20_CONSTEXPR ~ConcurrentQueue() { ClearList(); }
+    HAKLE_CPP20_CONSTEXPR ~ConcurrentQueue() noexcept { ClearList(); }
 
     explicit HAKLE_CPP14_CONSTEXPR ConcurrentQueue( ConcurrentQueue&& Other ) noexcept
-        : ProducerListsHead( std::move( Other.ProducerListsHead ) ), ProducerCount( std::move( Other.ProducerCount.load( std::memory_order_relaxed ) ) ),
-          ExplicitProducerAllocatorPair( std::move( Other.ExplicitManager() ), std::move( Other.ExplicitProducerAllocator() ) ),
-          ImplicitProducerAllocatorPair( std::move( Other.ImplicitManager() ), std::move( Other.ImplicitProducerAllocator() ) ),
-          ValueAllocatorPair( std::move( Other.NextExplicitConsumerId() ), std::move( Other.ValueAllocator() ) ),
-          ProducerListNodeAllocatorPair( std::move( Other.GlobalExplicitConsumerOffset() ), std::move( Other.ProducerListNodeAllocator() ) ), ImplicitMap( std::move( Other.ImplicitMap ) ) {
-        Other.ProducerListsHead.store( nullptr, std::memory_order_relaxed );
-        Other.ProducerCount.store( 0, std::memory_order_relaxed );
-        Other.GlobalExplicitConsumerOffset() = Other.NextExplicitConsumerId() = 0;
+        : HAKLE_FOR_EACH_COMMA( HAKLE_MOVE_ATOMIC, ProducerListsHead, ProducerCount ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, ImplicitMap, ExplicitProducerAllocatorPair, ImplicitProducerAllocatorPair ),
+          HAKLE_FOR_EACH_COMMA( HAKLE_MOVE_PAIR_ATOMIC1, ValueAllocatorPair, ProducerListNodeAllocatorPair ) {
+        Other.Reset();
         ReclaimProducerLists();
     }
 
     HAKLE_CPP14_CONSTEXPR ConcurrentQueue& operator=( ConcurrentQueue&& Other ) noexcept {
-        ClearList();
-        ProducerListsHead.store( Other.ProducerListsHead.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-        ProducerCount.store( Other.ProducerCount.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-        ExplicitManager()           = std::move( Other.ExplicitManager() );
-        ImplicitManager()           = std::move( Other.ImplicitManager() );
-        ExplicitProducerAllocator() = std::move( Other.ExplicitProducerAllocator() );
-        ImplicitProducerAllocator() = std::move( Other.ImplicitProducerAllocator() );
-        ValueAllocator()            = std::move( Other.ValueAllocator() );
-        ProducerListNodeAllocator() = std::move( Other.ProducerListNodeAllocator() );
-        ImplicitMap                 = std::move( Other.ImplicitMap );
+        if ( this != &Other ) {
+            ClearList();
 
-        Other.ProducerListsHead.store( nullptr, std::memory_order_relaxed );
-        Other.ProducerCount.store( 0, std::memory_order_relaxed );
-        Other.GlobalExplicitConsumerOffset() = Other.NextExplicitConsumerId() = 0;
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE_ATOMIC, HAKLE_SEM, ProducerListsHead, ProducerCount, GlobalExplicitConsumerOffset(), NextExplicitConsumerId() );
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, ImplicitMap, ExplicitProducerAllocatorPair, ImplicitProducerAllocatorPair, ValueAllocator(), ProducerListNodeAllocator() );
 
-        ReclaimProducerLists();
+            Other.Reset();
+            ReclaimProducerLists();
+        }
         return *this;
     }
 
@@ -1369,6 +1434,13 @@ public:
 
     HAKLE_CPP14_CONSTEXPR void ClearList() noexcept {
         ForEachProducerSafe( [ this ]( ProducerListNode* Node ) { DeleteProducerListNode( Node ); } );
+    }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        ProducerListsHead.store( nullptr, std::memory_order_relaxed );
+        ProducerCount.store( 0, std::memory_order_relaxed );
+        GlobalExplicitConsumerOffset().store( 0, std::memory_order_relaxed );
+        NextExplicitConsumerId().store( 0, std::memory_order_relaxed );
     }
 
     HAKLE_CPP14_CONSTEXPR ProducerToken GetProducerToken() noexcept { return ProducerToken( *this ); }
@@ -1624,7 +1696,7 @@ public:
     private:
         std::uint32_t     InitialOffset{};
         std::uint32_t     LastKnownGlobalOffset{ static_cast<std::uint32_t>( -1 ) };
-        std::size_t     ItemsConsumed{};
+        std::size_t       ItemsConsumed{};
         ProducerListNode* CurrentProducer{};
         ProducerListNode* DesiredProducer{};
     };
@@ -1769,7 +1841,7 @@ private:
     }
 
     // only used in destructor
-    HAKLE_CPP14_CONSTEXPR void DeleteProducerListNode( ProducerListNode* Node ) {
+    HAKLE_CPP14_CONSTEXPR void DeleteProducerListNode( ProducerListNode* Node ) noexcept {
         if ( Node == nullptr ) {
             return;
         }
@@ -1812,7 +1884,7 @@ private:
         return false;
     }
 
-    constexpr void ForEachProducerSafe( std::function<void( ProducerListNode* )> Func ) {
+    constexpr void ForEachProducerSafe( std::function<void( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
         for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; ) {
             ProducerListNode* Next = Node->Next;
             Func( Node );
@@ -1865,8 +1937,9 @@ private:
         return producer;
     }
 
-    std::atomic<ProducerListNode*> ProducerListsHead{};
-    std::atomic<uint32_t>          ProducerCount{};
+    std::atomic<ProducerListNode*>                                                            ProducerListsHead{};
+    std::atomic<uint32_t>                                                                     ProducerCount{};
+    HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
 
     CompressPair<ExplicitBlockManagerType, ExplicitProducerAllocatorType>   ExplicitProducerAllocatorPair{};
     CompressPair<ImplicitBlockManagerType, ImplicitProducerAllocatorType>   ImplicitProducerAllocatorPair{};
@@ -1883,17 +1956,15 @@ private:
     HAKLE_CPP14_CONSTEXPR AllocatorType&                 ValueAllocator() noexcept { return ValueAllocatorPair.Second(); }
     HAKLE_CPP14_CONSTEXPR ProducerListNodeAllocatorType& ProducerListNodeAllocator() noexcept { return ProducerListNodeAllocatorPair.Second(); }
 
-    constexpr const ExplicitBlockManagerType&   ExplicitManager() const noexcept { return ExplicitProducerAllocatorPair.First(); }
-    constexpr const ImplicitBlockManagerType&   ImplicitManager() const noexcept { return ImplicitProducerAllocatorPair.First(); }
-    constexpr const std::atomic<std::uint32_t>& GlobalExplicitConsumerOffset() const noexcept { return ValueAllocatorPair.First(); }
-    constexpr const std::atomic<std::uint32_t>& NextExplicitConsumerId() const noexcept { return ProducerListNodeAllocatorPair.First(); }
+    constexpr const ExplicitBlockManagerType&                   ExplicitManager() const noexcept { return ExplicitProducerAllocatorPair.First(); }
+    constexpr const ImplicitBlockManagerType&                   ImplicitManager() const noexcept { return ImplicitProducerAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::atomic<std::uint32_t>& GlobalExplicitConsumerOffset() const noexcept { return ValueAllocatorPair.First(); }
+    HAKLE_NODISCARD constexpr const std::atomic<std::uint32_t>& NextExplicitConsumerId() const noexcept { return ProducerListNodeAllocatorPair.First(); }
 
     constexpr const ExplicitProducerAllocatorType& ExplicitProducerAllocator() const noexcept { return ExplicitProducerAllocatorPair.Second(); }
     constexpr const ImplicitProducerAllocatorType& ImplicitProducerAllocator() const noexcept { return ImplicitProducerAllocatorPair.Second(); }
     constexpr const AllocatorType&                 ValueAllocator() const noexcept { return ValueAllocatorPair.Second(); }
     constexpr const ProducerListNodeAllocatorType& ProducerListNodeAllocator() const noexcept { return ProducerListNodeAllocatorPair.Second(); }
-
-    HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
 };
 
 #if HAKLE_CPP_VERSION <= 14

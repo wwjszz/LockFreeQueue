@@ -116,24 +116,44 @@ public:
 
     HAKLE_CPP20_CONSTEXPR ~HashTable() { Clear(); }
 
-    constexpr HashTable( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HAKLE_CPP14_CONSTEXPR HashTable( HashTable&& Other ) noexcept {
-        core::SwapRelaxed( EntriesCount, Other.EntriesCount );
-        core::SwapRelaxed( MainHash(), Other.MainHash() );
-        using std::swap;
-        swap( Hash, Other.Hash );
-        swap( INVALID_KEY, Other.INVALID_KEY );
+    HAKLE_CPP14_CONSTEXPR HashTable( HashTable&& Other ) noexcept
+        : HAKLE_MOVE_ATOMIC( EntriesCount ), PairAllocatorPair( ValueInitTag{}, std::move( Other.PairAllocator() ) ), HAKLE_MOVE_PAIR_ATOMIC1( NodeAllocatorPair ),
+          HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, Hash, INVALID_KEY ) {
+        Other.Reset();
     }
 
-    constexpr HashTable& operator=( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     HAKLE_CPP14_CONSTEXPR HashTable& operator=( HashTable&& Other ) noexcept {
-        Clear();
-        MainHash().store( nullptr, std::memory_order_relaxed );
-        EntriesCount.store( 0, std::memory_order_relaxed );
-        swap( Other );
+        if ( this != &Other ) {
+            Clear();
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE_ATOMIC, HAKLE_SEM, EntriesCount, MainHash() );
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, PairAllocator(), NodeAllocator(), Hash, INVALID_KEY );
+            HashResizeInProgressFlag().clear( std::memory_order_relaxed );
+            Other.Reset();
+        }
         return *this;
+    }
+
+    HashTable( const HashTable& Other )            = delete;
+    HashTable& operator=( const HashTable& Other ) = delete;
+
+    // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
+    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept {
+        // can't swap during resizing.
+        if ( this != &Other ) {
+            core::SwapRelaxed( EntriesCount, Other.EntriesCount );
+            core::SwapRelaxed( MainHash(), Other.MainHash() );
+
+            using std::swap;
+            swap( Hash, Other.Hash );
+            swap( INVALID_KEY, Other.INVALID_KEY );
+            swap( PairAllocator(), Other.PairAllocator() );
+            swap( NodeAllocator(), Other.NodeAllocator() );
+
+            HashResizeInProgressFlag().clear( std::memory_order_relaxed );
+            Other.HashResizeInProgressFlag().clear( std::memory_order_relaxed );
+        }
     }
 
     HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
@@ -145,13 +165,10 @@ public:
         }
     }
 
-    // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept {
-        // can't swap during resizing.
-        if ( &Other != this ) {
-            core::SwapRelaxed( EntriesCount, Other.EntriesCount );
-            core::SwapRelaxed( MainHash(), Other.MainHash() );
-        }
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        EntriesCount.store( 0, std::memory_order_relaxed );
+        MainHash().store( nullptr, std::memory_order_relaxed );
+        HashResizeInProgressFlag().clear( std::memory_order_relaxed );
     }
 
     HAKLE_CPP14_CONSTEXPR bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
@@ -358,12 +375,17 @@ private:
     constexpr const NodeAllocatorType& NodeAllocator() const noexcept { return NodeAllocatorPair.Second(); }
 
     // producer only fields
-    HAKLE_CPP14_CONSTEXPR std::atomic_flag&       HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
+    HAKLE_CPP14_CONSTEXPR std::atomic_flag& HashResizeInProgressFlag() noexcept { return PairAllocatorPair.First(); }
     HAKLE_CPP14_CONSTEXPR std::atomic<HashNode*>& MainHash() noexcept { return NodeAllocatorPair.First(); }
 
     HAKLE_NODISCARD constexpr const std::atomic_flag&       HashResizeInProgressFlag() const noexcept { return PairAllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const std::atomic<HashNode*>& MainHash() const noexcept { return NodeAllocatorPair.First(); }
 };
+
+template <class TKey, class TValue, std::size_t INITIAL_HASH_SIZE, class HashType, class Allocator>
+HAKLE_CPP14_CONSTEXPR void swap( HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& X, HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& Y ) noexcept {
+    X.swap( Y );
+}
 
 }  // namespace hakle
 

@@ -156,7 +156,7 @@ public:
         return HAKLE_OPERATOR_NEW( Tp );
     }
     constexpr Pointer Allocate( SizeType n ) {
-        info.AllocateCount += static_cast<int>(n);
+        info.AllocateCount += static_cast<int>( n );
         return HAKLE_OPERATOR_NEW_ARRAY( Tp, n );
     }
 
@@ -166,7 +166,7 @@ public:
     }
     constexpr void Deallocate( Pointer ptr, HAKLE_MAYBE_UNUSED SizeType n ) noexcept {
         Deallocate( ptr );
-        info.AllocateCount -= static_cast<int>(n - 1);
+        info.AllocateCount -= static_cast<int>( n - 1 );
     }
 
     template <class... Args>
@@ -181,7 +181,7 @@ public:
     }
     constexpr void Destroy( Pointer ptr, SizeType n ) noexcept {
         HAKLE_DESTROY_ARRAY( ptr, n );
-        info.ConstructCount -= static_cast<int>(n);
+        info.ConstructCount -= static_cast<int>( n );
     }
     constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };
@@ -237,6 +237,16 @@ public:
     static constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };
 #endif
+
+template <class Tp>
+HAKLE_CPP14_CONSTEXPR bool operator==( const HakleAllocator<Tp>&, const HakleAllocator<Tp>& ) noexcept {
+    return true;
+}
+
+template <class Tp>
+HAKLE_CPP14_CONSTEXPR bool operator!=( const HakleAllocator<Tp>& X, const HakleAllocator<Tp>& Y ) noexcept {
+    return !( X == Y );
+}
 
 }  // namespace hakle
 

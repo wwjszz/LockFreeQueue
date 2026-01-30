@@ -11,6 +11,7 @@
 #include "Block.h"
 #include "common/CompressPair.h"
 #include "common/allocator.h"
+#include "common/utility.h"
 
 // BlockPool + FreeList
 namespace hakle {
@@ -83,15 +84,15 @@ public:
 
     HAKLE_CPP20_CONSTEXPR ~FreeList() { Clear(); }
 
-    HAKLE_CPP14_CONSTEXPR FreeList( FreeList&& Other ) noexcept : AllocatorPair( std::move( Other.Head().load( std::memory_order_relaxed ) ), std::move( Other.Allocator() ) ) {
-        Other.Head().store( nullptr, std::memory_order_relaxed );
-    }
+    HAKLE_CPP14_CONSTEXPR FreeList( FreeList&& Other ) noexcept : HAKLE_MOVE_PAIR_ATOMIC1( AllocatorPair ) { Other.Reset(); }
 
     constexpr FreeList& operator=( FreeList&& Other ) noexcept {
-        Clear();
-        Head().store( Other.Head().load( std::memory_order_relaxed ), std::memory_order_relaxed );
-        Allocator() = std::move( Other.Allocator() );
-        Other.Head().store( nullptr, std::memory_order_relaxed );
+        if ( this != &Other ) {
+            Clear();
+            Head().store( Other.Head().load( std::memory_order_relaxed ), std::memory_order_relaxed );
+            Allocator() = std::move( Other.Allocator() );
+            Other.Reset();
+        }
         return *this;
     }
 
@@ -109,6 +110,8 @@ public:
             CurrentNode = Next;
         }
     }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept { Head().store( nullptr, std::memory_order_relaxed ); }
 
     HAKLE_CPP14_CONSTEXPR void Add( Node* InNode ) noexcept {
         // Set AddFlag first
@@ -173,10 +176,10 @@ private:
     static constexpr uint32_t RefsMask = 0x7fffffff;
     static constexpr uint32_t AddFlag  = 0x80000000;
 
-    HAKLE_CPP14_CONSTEXPR AllocatorType&            Allocator() noexcept { return AllocatorPair.Second(); }
-    constexpr const AllocatorType&      Allocator() const noexcept { return AllocatorPair.Second(); }
-    HAKLE_CPP14_CONSTEXPR std::atomic<Node*>&       Head() noexcept { return AllocatorPair.First(); }
-    constexpr const std::atomic<Node*>& Head() const noexcept { return AllocatorPair.First(); }
+    HAKLE_CPP14_CONSTEXPR AllocatorType& Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType&       Allocator() const noexcept { return AllocatorPair.Second(); }
+    HAKLE_CPP14_CONSTEXPR std::atomic<Node*>& Head() noexcept { return AllocatorPair.First(); }
+    constexpr const std::atomic<Node*>&       Head() const noexcept { return AllocatorPair.First(); }
 
     // compressed allocator
     CompressPair<std::atomic<Node*>, AllocatorType> AllocatorPair{};
@@ -189,7 +192,7 @@ public:
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
     HAKLE_CPP14_CONSTEXPR explicit BlockPool( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : AllocatorPair{ InSize, InAllocator } {
-        if (Size() > 0) {
+        if ( Size() > 0 ) {
             Head = AllocatorTraits::Allocate( Allocator(), Size() );
             for ( std::size_t i = 0; i < Size(); i++ ) {
                 AllocatorTraits::Construct( Allocator(), Head + i );
@@ -200,21 +203,15 @@ public:
 
     HAKLE_CPP20_CONSTEXPR ~BlockPool() { Clear(); }
 
-    HAKLE_CPP14_CONSTEXPR BlockPool( BlockPool&& Other ) noexcept
-        : AllocatorPair( std::move( Other.Size() ), std::move( Other.Allocator() ) ), Index( std::move( Other.Index.load( std::memory_order_relaxed ) ) ), Head( std::move( Other.Head ) ) {
-        Other.Head   = nullptr;
-        Other.Size() = 0;
-        Other.Index.store( 0, std::memory_order_relaxed );
-    }
+    HAKLE_CPP14_CONSTEXPR BlockPool( BlockPool&& Other ) noexcept : HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, AllocatorPair, Head ), HAKLE_MOVE_ATOMIC( Index ) { Other.Reset(); }
 
     constexpr BlockPool& operator=( BlockPool&& Other ) noexcept {
-        Clear();
-        Size()       = std::move( Other.Size() );
-        Allocator()  = std::move( Other.Allocator() );
-        Index        = std::move( Other.Index.load( std::memory_order_relaxed ) );
-        Head         = std::move( Other.Head );
-        Other.Head   = nullptr;
-        Other.Size() = Other.Index = 0;
+        if ( this != &Other ) {
+            Clear();
+            HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, AllocatorPair, Head );
+            HAKLE_OP_MOVE( Index );
+            Other.Reset();
+        }
         return *this;
     }
 
@@ -226,6 +223,12 @@ public:
         AllocatorTraits::Deallocate( Allocator(), Head, Size() );
     }
 
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
+        Size() = 0;
+        Head   = nullptr;
+        Index.store( 0, std::memory_order_relaxed );
+    }
+
     HAKLE_CPP14_CONSTEXPR BLOCK_TYPE* GetBlock() noexcept {
         if ( Index.load( std::memory_order_relaxed ) >= Size() )
             return nullptr;
@@ -235,15 +238,15 @@ public:
     }
 
 private:
-    HAKLE_CPP14_CONSTEXPR AllocatorType&                     Allocator() noexcept { return AllocatorPair.Second(); }
-    constexpr const AllocatorType&               Allocator() const noexcept { return AllocatorPair.Second(); }
-    HAKLE_CPP14_CONSTEXPR std::size_t&                       Size() noexcept { return AllocatorPair.First(); }
+    HAKLE_CPP14_CONSTEXPR AllocatorType& Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType&       Allocator() const noexcept { return AllocatorPair.Second(); }
+    HAKLE_CPP14_CONSTEXPR std::size_t&           Size() noexcept { return AllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const std::size_t& Size() const noexcept { return AllocatorPair.First(); }
 
     // compressed allocator
     CompressPair<std::size_t, AllocatorType> AllocatorPair{};
-    std::atomic<std::size_t>                 Index{ 0 };
     BLOCK_TYPE*                              Head{ nullptr };
+    std::atomic<std::size_t>                 Index{ 0 };
 };
 
 template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE>
@@ -263,7 +266,13 @@ public:
 
     constexpr BlockManagerBase() = default;
     constexpr explicit BlockManagerBase( const AllocatorType& InAllocator = AllocatorType{} ) : Base( InAllocator ) {}
-    virtual ~BlockManagerBase() = default;
+    HAKLE_CPP14_CONSTEXPR ~BlockManagerBase() = default;
+
+    HAKLE_CPP14_CONSTEXPR                   BlockManagerBase( BlockManagerBase&& Other ) noexcept = default;
+    HAKLE_CPP14_CONSTEXPR BlockManagerBase& operator=( BlockManagerBase&& Other ) noexcept        = default;
+
+    HAKLE_CPP14_CONSTEXPR                   BlockManagerBase( const BlockManagerBase& Other ) = delete;
+    HAKLE_CPP14_CONSTEXPR BlockManagerBase& operator=( const BlockManagerBase& Other )        = delete;
 
     using AllocMode = hakle::AllocMode;
 
@@ -271,8 +280,8 @@ public:
     virtual HAKLE_CPP20_CONSTEXPR void       ReturnBlocks( BlockType* InBlock )   = 0;
     virtual HAKLE_CPP20_CONSTEXPR void       ReturnBlock( BlockType* InBlock )    = 0;
 
-    HAKLE_CPP14_CONSTEXPR AllocatorType&       Allocator() noexcept { return Base::Get(); }
-    constexpr const AllocatorType& Allocator() const noexcept { return Base::Get(); }
+    HAKLE_CPP14_CONSTEXPR AllocatorType& Allocator() noexcept { return Base::Get(); }
+    constexpr const AllocatorType&       Allocator() const noexcept { return Base::Get(); }
 
 private:
     using Base = CompressPairElem<ALLOCATOR_TYPE, 0>;
@@ -294,13 +303,13 @@ public:
     using AllocMode = typename BaseManager::AllocMode;
 
     constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), List( InAllocator ) {}
-    HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
+    HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() = default;
 
-    HAKLE_CPP14_CONSTEXPR HakleBlockManager( HakleBlockManager&& Other ) noexcept            = default;
-    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( HakleBlockManager&& Other ) noexcept = default;
+    HAKLE_CPP14_CONSTEXPR                    HakleBlockManager( HakleBlockManager&& Other ) noexcept = default;
+    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( HakleBlockManager&& Other ) noexcept         = default;
 
-    HAKLE_CPP14_CONSTEXPR HakleBlockManager( const HakleBlockManager& Other )            = delete;
-    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( const HakleBlockManager& Other ) = delete;
+    HAKLE_CPP14_CONSTEXPR                    HakleBlockManager( const HakleBlockManager& Other ) = delete;
+    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( const HakleBlockManager& Other )         = delete;
 
     HAKLE_CPP14_CONSTEXPR BlockType* RequisitionBlock( AllocMode Mode ) override {
         BlockType* Block = Pool.GetBlock();

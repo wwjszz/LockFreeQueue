@@ -421,7 +421,7 @@ TEST_F( HashTableTest, StressTest ) {
 
     std::vector<std::thread> threads;
 
-    auto worker = [ duration_seconds, this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]( ) {
+    auto worker = [ duration_seconds, this, &stop, &total_operations, &add_operations, &get_operations, &set_operations ]() {
         std::random_device              rd;
         std::mt19937                    gen( rd() );
         std::uniform_int_distribution<> op_dis( 0, 100 );
@@ -462,7 +462,7 @@ TEST_F( HashTableTest, StressTest ) {
     };
 
     for ( int i = 0; i < num_threads; ++i ) {
-        threads.emplace_back( worker);
+        threads.emplace_back( worker );
     }
 
     std::this_thread::sleep_for( std::chrono::seconds( duration_seconds ) );
@@ -548,6 +548,19 @@ TEST_F( HashTableTest, MoveSemantics ) {
     auto original_size = table->GetSize();
 
     // 移动构造
+    *table = std::move( *table );
+
+    // 验证数据被移动
+    for ( uint32_t i = 0; i < 10; ++i ) {
+        uint32_t outValue = 0;
+        bool     found    = table->Get( i, outValue );
+        EXPECT_TRUE( found );
+        EXPECT_EQ( outValue, i * 100 );
+    }
+
+    EXPECT_EQ( table->GetSize(), original_size );
+
+    // 移动构造
     TestHashTable moved_table( std::move( *table ) );
 
     // 验证数据被移动
@@ -556,10 +569,32 @@ TEST_F( HashTableTest, MoveSemantics ) {
         bool     found    = moved_table.Get( i, outValue );
         EXPECT_TRUE( found );
         EXPECT_EQ( outValue, i * 100 );
+        bool found2 = table->Get( i, outValue );
+        EXPECT_FALSE( found2 );
     }
 
     // 验证大小正确
     EXPECT_EQ( moved_table.GetSize(), original_size );
+    EXPECT_EQ( table->GetSize(), 0 );
+
+
+
+    // move operator=
+    TestHashTable moved_table2{};
+    moved_table2 = std::move( moved_table );
+
+    // 验证数据被移动
+    for ( uint32_t i = 0; i < 10; ++i ) {
+        uint32_t outValue = 0;
+        bool     found    = moved_table2.Get( i, outValue );
+        EXPECT_TRUE( found );
+        EXPECT_EQ( outValue, i * 100 );
+        bool found2 = moved_table.Get( i, outValue );
+        EXPECT_FALSE( found2 );
+    }
+
+    // 验证大小正确
+    EXPECT_EQ( moved_table2.GetSize(), original_size );
 }
 
 // 边界值测试
