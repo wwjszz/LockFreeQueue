@@ -24,7 +24,7 @@ using TestFlagsAllocator      = HakleAllocator<TestFlagsBlock>;
 using TestSlowQueue = SlowQueue<int, kBlockSize>;
 using TestSlowQueue = SlowQueue<int, kBlockSize>;
 
-using FastAllocMode = TestSlowQueue::AllocMode;
+using SlowAllocMode = TestSlowQueue::AllocMode;
 using SlowAllocMode = TestSlowQueue::AllocMode;
 
 struct ExceptionTest {
@@ -34,7 +34,7 @@ struct ExceptionTest {
         }
     }
 
-    ExceptionTest(ExceptionTest&& other) : value( other.value ) {}
+    ExceptionTest( ExceptionTest&& other ) : value( other.value ) {}
 
     ExceptionTest& operator=( ExceptionTest other ) {
         // if ( other.value == 5 ) {
@@ -55,7 +55,7 @@ struct ExceptionTest2 {
         // }
     }
 
-    ExceptionTest2(ExceptionTest2&& other) : value( other.value ) {}
+    ExceptionTest2( ExceptionTest2&& other ) : value( other.value ) {}
 
     ExceptionTest2& operator=( ExceptionTest2 other ) {
         if ( other.value == 5 ) {
@@ -83,12 +83,12 @@ TEST( SlowQueueLeaks, StressTest ) {
     }
 
     HakleCounterBlockManager<int, kBlockSize> blockManager( POOL_SIZE );
-    SlowQueue<int, kBlockSize>                queue( 2, blockManager );
+    SlowQueue<int, kBlockSize>                queue( 2, &blockManager );
 
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
         for ( std::size_t i = 0; i < N; ++i ) {
-            while ( !queue.EnqueueBulk<FastAllocMode::CanAlloc>( a, 100 ) ) {
+            while ( !queue.EnqueueBulk<SlowAllocMode::CanAlloc>( a, 100 ) ) {
                 printf( "enqueue failed\n" );
             }
         }
@@ -129,7 +129,7 @@ TEST( SlowQueueLeaks, EnqueueExceptionTest ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = SlowQueue<ExceptionTest, kBlockSize, HakleAllocator<ExceptionTest>, ExceptionBlock>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 20, blockManager );
+    ExceptionQueue       queue( 20, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
@@ -211,7 +211,7 @@ TEST( SlowQueueLeaks, DequeueExceptionTest ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = SlowQueue<ExceptionTest2, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 2, blockManager );
+    ExceptionQueue       queue( 2, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 80000;  // 每个数从 0 到 N-1
@@ -274,6 +274,130 @@ TEST( SlowQueueLeaks, DequeueExceptionTest ) {
     for ( auto& t : consumers ) {
         t.join();
     }
+
+    delete[] a;
+
+    // 验证：总和是否正确
+    unsigned long long expected_sum = 99 * 50 * N;
+    EXPECT_EQ( failed.load(), 0 );
+    EXPECT_EQ( total_sum.load(), expected_sum - N * 45 );
+
+    // 验证队列为空
+    EXPECT_EQ( queue.Size(), 0 );
+}
+
+TEST( SlowQueueLeaks, MoveTest ) {
+    using ExceptionBlock       = HakleCounterBlock<ExceptionTest2, kBlockSize>;
+    using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
+    using ExceptionQueue       = SlowQueue<ExceptionTest2, kBlockSize>;
+    ExceptionBlockManger blockManager( POOL_SIZE );
+    ExceptionQueue       queue( 2, &blockManager );
+    using AllocMode = ExceptionQueue::AllocMode;
+
+    const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
+    const int                       NUM_CONSUMERS = 10;    // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };        // 所有消费者结果累加
+    std::vector<std::thread>        consumers;
+    std::atomic<unsigned long long> count{ 0 };
+    std::atomic<int>                failed{ 0 };
+
+    int* a = new int[ 100 ]{};
+    for ( int i = 0; i < 100; ++i ) {
+        a[ i ] = i;
+    }
+
+    // 生产者：生产 0 ~ N-1
+    std::thread producer( [ &queue, N, a ]() {
+        for ( std::size_t i = 0; i < N; ++i ) {
+            try {
+                if ( !queue.EnqueueBulk<AllocMode::CanAlloc>( a, 100 ) ) {
+                    printf( "enqueue failed\n" );
+                }
+            }
+            catch ( ... ) {
+                // printf("find a exception\n");
+                // do nothing
+            }
+        }
+    } );
+
+    // 创建多个消费者
+    for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
+        consumers.emplace_back( [ &queue, N, &total_sum, &count, &failed ]() {
+            unsigned long long local_sum = 0;
+
+            // 每个消费者一直取，直到取到 N 个元素为止
+            while ( count < N * 40 ) {
+                ExceptionTest2 buffer[ 10 ]{};
+                // std::size_t   random_index = rand() % 100;
+                // printf("random_index: %zu\n", random_index);
+                try {
+                    std::size_t get_count = queue.DequeueBulk( &buffer[ 0 ], 10 );
+                    count.fetch_add( get_count, std::memory_order_relaxed );
+                    for ( std::size_t i = 0; i < get_count; ++i ) {
+                        local_sum += buffer[ i ].value;
+                    }
+                }
+                catch ( ... ) {
+                    // count.fetch_add( 1, std::memory_order_relaxed );
+                    // failed.fetch_add( 1, std::memory_order_relaxed );
+                }
+            }
+
+            // 累加到总和（使用原子操作）
+            total_sum.fetch_add( local_sum, std::memory_order_relaxed );
+        } );
+    }
+
+    // 等待生产者和所有消费者完成
+    producer.join();
+    for ( auto& t : consumers ) {
+        t.join();
+    }
+
+    std::size_t queue_size = queue.Size();
+    queue                  = std::move( queue );
+
+    printf( "queue size: %zu\n", queue_size );
+
+    ExceptionQueue queue2 = std::move( queue );
+
+    EXPECT_EQ( queue.Size(), 0 );
+    EXPECT_EQ( queue2.Size(), queue_size );
+
+    std::vector<std::thread> consumers2;
+    for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
+        consumers2.emplace_back( [ &queue2, N, &total_sum, &count ]() {
+            unsigned long long local_sum = 0;
+
+            // 每个消费者一直取，直到取到 N 个元素为止
+            while ( count < N * 90 ) {
+                ExceptionTest2 buffer[ 10 ]{};
+                // std::size_t   random_index = rand() % 100;
+                // printf("random_index: %zu\n", random_index);
+                try {
+                    std::size_t get_count = queue2.DequeueBulk( &buffer[ 0 ], 10 );
+                    count.fetch_add( get_count, std::memory_order_relaxed );
+                    for ( std::size_t i = 0; i < get_count; ++i ) {
+                        local_sum += buffer[ i ].value;
+                    }
+                }
+                catch ( ... ) {
+                    // count.fetch_add( 1, std::memory_order_relaxed );
+                    // failed.fetch_add( 1, std::memory_order_relaxed );
+                }
+            }
+
+            // 累加到总和（使用原子操作）
+            total_sum.fetch_add( local_sum, std::memory_order_relaxed );
+        } );
+    }
+
+    for ( auto& t : consumers2 ) {
+        t.join();
+    }
+
+    EXPECT_EQ( queue2.Size(), 0 );
 
     delete[] a;
 

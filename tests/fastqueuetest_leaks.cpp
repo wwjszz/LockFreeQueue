@@ -32,9 +32,7 @@ struct ExceptionTest {
         }
     }
 
-    ExceptionTest(ExceptionTest&& other) noexcept {
-        value = other.value;
-    }
+    ExceptionTest( ExceptionTest&& other ) noexcept { value = other.value; }
 
     ExceptionTest& operator=( ExceptionTest other ) noexcept {
         // if ( other.value == 5 ) {
@@ -55,9 +53,7 @@ struct ExceptionTest2 {
         // }
     }
 
-    ExceptionTest2(ExceptionTest2&& other) noexcept {
-        value = other.value;
-    }
+    ExceptionTest2( ExceptionTest2&& other ) noexcept { value = other.value; }
 
     ExceptionTest2& operator=( ExceptionTest2 other ) {
         if ( other.value == 5 ) {
@@ -85,7 +81,7 @@ TEST( FastQueueLeaks, StressTest ) {
     }
 
     HakleFlagsBlockManager<int, kBlockSize> blockManager( POOL_SIZE );
-    FastQueue<int, kBlockSize>              queue( 2, blockManager );
+    FastQueue<int, kBlockSize>              queue( 2, &blockManager );
 
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
@@ -140,7 +136,7 @@ TEST( FastQueueLeaks, StressTestNoBulk ) {
     }
 
     HakleFlagsBlockManager<int, kBlockSize> blockManager( POOL_SIZE );
-    FastQueue<int, kBlockSize>              queue( 2, blockManager );
+    FastQueue<int, kBlockSize>              queue( 2, &blockManager );
 
     // 生产者：生产 0 ~ N-1
     std::thread producer( [ &queue, N, a ]() {
@@ -188,7 +184,7 @@ TEST( FastQueueLeaks, EnqueueExceptionTest ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = FastQueue<ExceptionTest, kBlockSize, HakleAllocator<ExceptionTest>, ExceptionBlock>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 20, blockManager );
+    ExceptionQueue       queue( 20, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
@@ -270,7 +266,7 @@ TEST( FastQueueLeaks, DequeueExceptionTest ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = FastQueue<ExceptionTest2, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 2, blockManager );
+    ExceptionQueue       queue( 2, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
@@ -350,7 +346,7 @@ TEST( FastQueueLeaks, MoveTest ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = FastQueue<ExceptionTest2, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 2, blockManager );
+    ExceptionQueue       queue( 2, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
@@ -415,21 +411,22 @@ TEST( FastQueueLeaks, MoveTest ) {
     }
 
     std::size_t queue_size = queue.Size();
+    queue                  = std::move( queue );
 
-    printf("queue size: %zu\n", queue_size);
+    printf( "queue size: %zu\n", queue_size );
 
     ExceptionQueue queue2 = std::move( queue );
 
     EXPECT_EQ( queue.Size(), 0 );
     EXPECT_EQ( queue2.Size(), queue_size );
 
-    std::vector<std::thread>        consumers2;
+    std::vector<std::thread> consumers2;
     for ( int c = 0; c < NUM_CONSUMERS; ++c ) {
-        consumers2.emplace_back( [ &queue2, N, &total_sum, &count, queue_size ]() {
+        consumers2.emplace_back( [ &queue2, N, &total_sum, &count ]() {
             unsigned long long local_sum = 0;
 
             // 每个消费者一直取，直到取到 N 个元素为止
-            while ( count < queue_size ) {
+            while ( count < N * 90 ) {
                 ExceptionTest2 buffer[ 10 ]{};
                 // std::size_t   random_index = rand() % 100;
                 // printf("random_index: %zu\n", random_index);

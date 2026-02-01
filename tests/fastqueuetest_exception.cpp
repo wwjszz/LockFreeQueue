@@ -29,7 +29,7 @@ using AllocMode    = Queue::AllocMode;
 TEST( ExplicitQueueExceptionTest, Enqueue_ExceptionRollback ) {
     constexpr std::size_t POOL_SIZE = 16;
     BlockManager          mgr( POOL_SIZE );
-    Queue                 q( 128, mgr );
+    Queue                 q( 128, &mgr );
 
     // 先让一次构造成功，第二次构造抛
     ThrowOnCtor::Reset( /*throwOn=*/1 );
@@ -56,7 +56,7 @@ TEST( ExplicitQueueExceptionTest, Enqueue_ExceptionRollback ) {
 TEST( ExplicitQueueExceptionTest, EnqueueBulk_ExceptionRollback ) {
     constexpr std::size_t POOL_SIZE = 16;
     BlockManager          mgr( POOL_SIZE );
-    Queue                 q( 128, mgr );
+    Queue                 q( 128, &mgr );
 
     constexpr std::size_t    COUNT = kBlockSize * 3 + 10;  // 跨 3+ 块
     std::vector<ThrowOnCtor> src;
@@ -90,7 +90,7 @@ TEST( ExplicitQueueExceptionTest, EnqueueBulk_ExceptionRollback ) {
 TEST( ExplicitQueueExceptionTest, EnqueueBulk_FailThenSuccess ) {
     constexpr std::size_t POOL_SIZE = 16;
     BlockManager          mgr( POOL_SIZE );
-    Queue                 q( 128, mgr );
+    Queue                 q( 128, &mgr );
 
     constexpr std::size_t    COUNT = kBlockSize * 2 + 5;
     std::vector<ThrowOnCtor> src;
@@ -142,7 +142,7 @@ TEST( ExplicitQueueExceptionTest, EnqueueBulk_FailThenSuccess ) {
 TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
     constexpr std::size_t POOL_SIZE = 16;
     BlockManager          mgr( POOL_SIZE );
-    Queue                 q( 128, mgr );
+    Queue                 q( 128, &mgr );
 
     constexpr std::size_t    COUNT = kBlockSize * 2;
     std::vector<ThrowOnCtor> src;
@@ -189,7 +189,7 @@ TEST( ExplicitQueueExceptionTest, DequeueBulk_AssignExceptionRollback ) {
 TEST( ExplicitQueueExceptionTest, MultiConsumerStress_ThrowOnCtor ) {
     constexpr std::size_t POOL_SIZE = 256;
     BlockManager          mgr( POOL_SIZE );
-    Queue                 q( 1024, mgr );
+    Queue                 q( 1024, &mgr );
 
     const unsigned long long N             = 10000;
     const int                NUM_CONSUMERS = 8;
@@ -240,8 +240,8 @@ TEST( ExplicitQueueExceptionTest, MultiConsumerStress_ThrowOnCtor ) {
     for ( auto& t : consumers )
         t.join();
 
-    std::cout << "count=" << count.load() << " failed=" << failed.load() << " live=" << ThrowOnCtor::liveCount.load()
-              << " ctor=" << ThrowOnCtor::ctorCount.load() << " dtor=" << ThrowOnCtor::dtorCount.load() << std::endl;
+    std::cout << "count=" << count.load() << " failed=" << failed.load() << " live=" << ThrowOnCtor::liveCount.load() << " ctor=" << ThrowOnCtor::ctorCount.load()
+              << " dtor=" << ThrowOnCtor::dtorCount.load() << std::endl;
 
     EXPECT_EQ( ThrowOnCtor::liveCount.load(), dequeue_failed.load() + failed.load() );
     EXPECT_EQ( ThrowOnCtor::ctorCount.load(), ThrowOnCtor::dtorCount.load() + dequeue_failed.load() + failed.load() );

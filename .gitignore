@@ -57,6 +57,10 @@ CTestTestfile.cmake
 thirdparty/
 _deps
 
+benchmark-build
+googletest-build
+
+compile_commands.json
 
 log.*
 

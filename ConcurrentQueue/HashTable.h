@@ -22,13 +22,6 @@ namespace hakle {
 
 namespace core {
 
-    template <class T>
-    inline static constexpr void SwapRelaxed( std::atomic<T>& Left, std::atomic<T>& Right ) noexcept {
-        T Temp = Left.load( std::memory_order_relaxed );
-        Left.store( Right.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-        Right.store( Temp, std::memory_order_relaxed );
-    }
-
     template <short N>
     struct HashDispatch {
         static_assert( N == 4 || N == 8, "hakle::core::Hash only supports 32 and 64-bit types" );
@@ -138,23 +131,20 @@ public:
     HashTable( const HashTable& Other )            = delete;
     HashTable& operator=( const HashTable& Other ) = delete;
 
+#if HAKLE_CPP_VERSION >= 20
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept {
+    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept
+        HAKLE_REQUIRES( std::swappable<HashType>&& std::swappable<TKey>&& std::swappable<PairAllocatorType>&& std::swappable<NodeAllocatorType> ) {
         // can't swap during resizing.
         if ( this != &Other ) {
-            core::SwapRelaxed( EntriesCount, Other.EntriesCount );
-            core::SwapRelaxed( MainHash(), Other.MainHash() );
-
+            HAKLE_FOR_EACH( HAKLE_SWAP_ATOMIC, HAKLE_SEM, EntriesCount, MainHash() );
             using std::swap;
-            swap( Hash, Other.Hash );
-            swap( INVALID_KEY, Other.INVALID_KEY );
-            swap( PairAllocator(), Other.PairAllocator() );
-            swap( NodeAllocator(), Other.NodeAllocator() );
-
+            HAKLE_FOR_EACH( HAKLE_SWAP, HAKLE_SEM, Hash, INVALID_KEY, PairAllocator(), NodeAllocator() );
             HashResizeInProgressFlag().clear( std::memory_order_relaxed );
             Other.HashResizeInProgressFlag().clear( std::memory_order_relaxed );
         }
     }
+#endif
 
     HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         auto CurrentHash = MainHash().load( std::memory_order_relaxed );
@@ -382,10 +372,13 @@ private:
     HAKLE_NODISCARD constexpr const std::atomic<HashNode*>& MainHash() const noexcept { return NodeAllocatorPair.First(); }
 };
 
+#if HAKLE_CPP_VERSION >= 20
 template <class TKey, class TValue, std::size_t INITIAL_HASH_SIZE, class HashType, class Allocator>
-HAKLE_CPP14_CONSTEXPR void swap( HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& X, HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& Y ) noexcept {
-    X.swap( Y );
+HAKLE_REQUIRES( std::swappable<HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>> )
+HAKLE_CPP14_CONSTEXPR void swap( HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& lhs, HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& rhs ) noexcept {
+    lhs.swap( rhs );
 }
+#endif
 
 }  // namespace hakle
 

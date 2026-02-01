@@ -151,6 +151,8 @@ public:
 
     static Info info;
 
+    HAKLE_CPP14_CONSTEXPR void swap( HakleAllocator& ) noexcept {}
+
     constexpr Pointer Allocate() {
         ++info.AllocateCount;
         return HAKLE_OPERATOR_NEW( Tp );
@@ -221,6 +223,8 @@ public:
         return *this;
     }
 
+    HAKLE_CPP14_CONSTEXPR void swap( HakleAllocator& ) noexcept {}
+
     static constexpr Pointer Allocate() { return HAKLE_OPERATOR_NEW( Tp ); }
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
 
@@ -246,6 +250,11 @@ HAKLE_CPP14_CONSTEXPR bool operator==( const HakleAllocator<Tp>&, const HakleAll
 template <class Tp>
 HAKLE_CPP14_CONSTEXPR bool operator!=( const HakleAllocator<Tp>& X, const HakleAllocator<Tp>& Y ) noexcept {
     return !( X == Y );
+}
+
+template <class Tp>
+HAKLE_CPP14_CONSTEXPR void swap( HakleAllocator<Tp>& X, HakleAllocator<Tp>& Y ) noexcept {
+    X.swap( Y );
 }
 
 }  // namespace hakle

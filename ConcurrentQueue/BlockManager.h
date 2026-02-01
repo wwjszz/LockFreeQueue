@@ -6,7 +6,9 @@
 #define BLOCKMANAGER_H
 
 #include <atomic>
+#include <concepts>
 #include <cstddef>
+#include <type_traits>
 
 #include "Block.h"
 #include "common/CompressPair.h"
@@ -113,6 +115,14 @@ public:
 
     HAKLE_CPP14_CONSTEXPR void Reset() noexcept { Head().store( nullptr, std::memory_order_relaxed ); }
 
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( FreeList& Other ) noexcept HAKLE_REQUIRES( std::swappable<AllocatorType> ) {
+        HAKLE_SWAP_ATOMIC( Head() );
+        using std::swap;
+        HAKLE_SWAP( Allocator() );
+    }
+#endif
+
     HAKLE_CPP14_CONSTEXPR void Add( Node* InNode ) noexcept {
         // Set AddFlag first
         if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
@@ -209,7 +219,7 @@ public:
         if ( this != &Other ) {
             Clear();
             HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, AllocatorPair, Head );
-            HAKLE_OP_MOVE( Index );
+            HAKLE_OP_MOVE_ATOMIC( Index );
             Other.Reset();
         }
         return *this;
@@ -228,6 +238,16 @@ public:
         Head   = nullptr;
         Index.store( 0, std::memory_order_relaxed );
     }
+
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( BlockPool& Other ) noexcept HAKLE_REQUIRES( std::swappable<AllocatorType> ) {
+        HAKLE_SWAP_ATOMIC( Index );
+        using std::swap;
+        HAKLE_FOR_EACH( HAKLE_SWAP, HAKLE_SEM, AllocatorPair, Head );
+    }
+#endif
+
+    HAKLE_NODISCARD HAKLE_CPP14_CONSTEXPR std::size_t GetSize() const noexcept { return Size(); }
 
     HAKLE_CPP14_CONSTEXPR BLOCK_TYPE* GetBlock() noexcept {
         if ( Index.load( std::memory_order_relaxed ) >= Size() )
@@ -274,6 +294,15 @@ public:
     HAKLE_CPP14_CONSTEXPR                   BlockManagerBase( const BlockManagerBase& Other ) = delete;
     HAKLE_CPP14_CONSTEXPR BlockManagerBase& operator=( const BlockManagerBase& Other )        = delete;
 
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( BlockManagerBase& Other ) noexcept HAKLE_REQUIRES( std::swappable<AllocatorType> ) {
+        // TODO: swap allocator_type traits
+        // TODO: checking user-defined allocator, blockmanager, block,
+        using std::swap;
+        swap( static_cast<Base&>( *this ), static_cast<Base&>( Other ) );
+    }
+#endif
+
     using AllocMode = hakle::AllocMode;
 
     virtual HAKLE_CPP20_CONSTEXPR BlockType* RequisitionBlock( AllocMode InMode ) = 0;
@@ -310,6 +339,16 @@ public:
 
     HAKLE_CPP14_CONSTEXPR                    HakleBlockManager( const HakleBlockManager& Other ) = delete;
     HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( const HakleBlockManager& Other )         = delete;
+
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( HakleBlockManager& Other ) noexcept HAKLE_REQUIRES( std::swappable<BlockPool<BlockType, AllocatorType>>&& std::swappable<FreeList<BlockType, AllocatorType>> ) {
+        BaseManager::swap( Other );
+        Pool.swap( Other.Pool );
+        List.swap( Other.List );
+    }
+#endif
+
+    HAKLE_NODISCARD HAKLE_CPP14_CONSTEXPR std::size_t GetBlockPoolSize() const noexcept { return Pool.GetSize(); }
 
     HAKLE_CPP14_CONSTEXPR BlockType* RequisitionBlock( AllocMode Mode ) override {
         BlockType* Block = Pool.GetBlock();
@@ -350,11 +389,39 @@ private:
     FreeList<BlockType, AllocatorType>  List;
 };
 
+#if HAKLE_CPP_VERSION >= 20
+
+template <class Node, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
+HAKLE_REQUIRES( std::swappable<FreeList<Node, ALLOCATOR_TYPE>> )
+inline HAKLE_CPP14_CONSTEXPR void swap( FreeList<Node, ALLOCATOR_TYPE>& lhs, FreeList<Node, ALLOCATOR_TYPE>& rhs ) noexcept {
+    lhs.swap( rhs );
+}
+
+template <class BLOCK_TYPE, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
+HAKLE_REQUIRES( std::swappable<BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>> )
+inline HAKLE_CPP14_CONSTEXPR void swap( BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept {
+    lhs.swap( rhs );
+}
+
+template <class BLOCK_TYPE, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
+HAKLE_REQUIRES( std::swappable<HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>> )
+inline HAKLE_CPP14_CONSTEXPR void swap( HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept {
+    lhs.swap( rhs );
+}
+
+#endif
+
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleFlagsBlock<T, BLOCK_SIZE>>>
 using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>>;
 
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>>
 using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>>;
+
+template <HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
+inline BLOCK_MANAGER_TYPE& GetBlockManager() {
+    static BLOCK_MANAGER_TYPE BlockManager;
+    return BlockManager;
+}
 
 }  // namespace hakle
 

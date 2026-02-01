@@ -5,6 +5,7 @@
 #ifndef COMPRESSPAIR_H
 #define COMPRESSPAIR_H
 
+#include <concepts>
 #include <type_traits>
 #include <utility>
 
@@ -27,7 +28,7 @@ template <class T, int Index,
 struct CompressPairElem {
 
 #if HAKLE_CPP_VERSION >= 20
-    friend bool operator==( const CompressPairElem& lhs, const CompressPairElem& rhs ) HAKLE_REQUIRES( std::equality_comparable<T> ) { return lhs.value == rhs.value; }
+    friend HAKLE_CPP14_CONSTEXPR bool operator==( const CompressPairElem& lhs, const CompressPairElem& rhs ) HAKLE_REQUIRES( std::equality_comparable<T> ) { return lhs.value == rhs.value; }
 #endif
 
     using Reference      = T&;
@@ -48,6 +49,13 @@ struct CompressPairElem {
 
     HAKLE_CPP14_CONSTEXPR ~CompressPairElem() = default;
 
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( CompressPairElem& Other ) noexcept HAKLE_REQUIRES( std::swappable<T> ) {
+        using std::swap;
+        swap( value, Other.value );
+    }
+#endif
+
     HAKLE_CPP14_CONSTEXPR Reference Get() { return value; }
     constexpr ConstReference        Get() const { return value; }
 
@@ -59,7 +67,7 @@ template <class T, int Index>
 struct CompressPairElem<T, Index, true> : private T {
 
 #if HAKLE_CPP_VERSION >= 20
-    friend bool operator==( const CompressPairElem& lhs, const CompressPairElem& rhs ) HAKLE_REQUIRES( std::equality_comparable<T> ) {
+    friend HAKLE_CPP14_CONSTEXPR bool operator==( const CompressPairElem& lhs, const CompressPairElem& rhs ) HAKLE_REQUIRES( std::equality_comparable<T> ) {
         return static_cast<const T&>( lhs ) == static_cast<const T&>( rhs );
     }
 #endif
@@ -82,6 +90,13 @@ struct CompressPairElem<T, Index, true> : private T {
     HAKLE_CPP14_CONSTEXPR CompressPairElem& operator=( CompressPairElem&& Other ) noexcept        = default;
 
     HAKLE_CPP14_CONSTEXPR ~CompressPairElem() = default;
+
+#if HAKLE_CPP_VERSION >= 20
+    HAKLE_CPP14_CONSTEXPR void swap( CompressPairElem& Other ) noexcept HAKLE_REQUIRES( std::is_swappable_v<T> ) {
+        using std::swap;
+        swap( static_cast<T&>( *this ), static_cast<T&>( Other ) );
+    }
+#endif
 
     Reference      Get() { return *this; }
     ConstReference Get() const { return *this; }
@@ -123,24 +138,35 @@ public:
 
     constexpr static Base2* GetSecondBase( CompressPair* Pair ) noexcept { return static_cast<Base2*>( Pair ); }
 
-    constexpr void swap( CompressPair& Other ) noexcept {
+#if HAKLE_CPP_VERSION >= 20
+    constexpr void swap( CompressPair& Other ) noexcept HAKLE_REQUIRES( std::swappable<T1>&& std::swappable<T2> ) {
         using std::swap;
         swap( First(), Other.First() );
         swap( Second(), Other.Second() );
     }
+#endif
 };
 
 #if HAKLE_CPP_VERSION >= 20
 template <class T1, class T2>
-bool operator==( const CompressPair<T1, T2>& lhs, const CompressPair<T1, T2>& rhs ) HAKLE_REQUIRES( std::equality_comparable<T1>&& std::equality_comparable<T2> ) {
+HAKLE_REQUIRES( std::equality_comparable<T1>&& std::equality_comparable<T2> )
+bool operator==( const CompressPair<T1, T2>& lhs, const CompressPair<T1, T2>& rhs ) {
     return lhs.First() == rhs.First() && lhs.Second() == rhs.Second();
 }
-#endif
 
-template <class T1, class T2>
-inline constexpr void swap( CompressPair<T1, T2>& X, CompressPair<T1, T2>& Y ) noexcept {
+template <class T, int Index, bool CanBeEmptyBase>
+HAKLE_REQUIRES( std::is_swappable_v<T> )
+inline HAKLE_CPP14_CONSTEXPR void swap( CompressPairElem<T, Index, CanBeEmptyBase>& X, CompressPairElem<T, Index, CanBeEmptyBase>& Y ) noexcept {
     X.swap( Y );
 }
+
+template <class T1, class T2>
+HAKLE_REQUIRES( std::is_swappable_v<T1>&& std::is_swappable_v<T2> )
+inline HAKLE_CPP14_CONSTEXPR void swap( CompressPair<T1, T2>& X, CompressPair<T1, T2>& Y ) noexcept {
+    X.swap( Y );
+}
+
+#endif
 
 }  // namespace hakle
 

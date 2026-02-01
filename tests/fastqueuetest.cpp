@@ -32,7 +32,7 @@ void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::mil
 // === 测试 1: 基本 Enqueue/Dequeue ===
 TEST( FastQueueTest, BasicEnqueueDequeue ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
-    TestFlagsQueue        queue( 10, blockManager );
+    TestFlagsQueue        queue( 10, &blockManager );
     using AllocMode = TestFlagsQueue::AllocMode;
 
     EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( 100 ) );
@@ -51,7 +51,7 @@ TEST( FastQueueTest, BasicEnqueueDequeue ) {
 // === 测试 2: 队列大小 ===
 TEST( FastQueueTest, Size ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
-    TestCounterQueue        queue( 5, blockManager );
+    TestCounterQueue        queue( 5, &blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
     EXPECT_EQ( queue.Size(), 0 );
 
@@ -69,7 +69,7 @@ TEST( FastQueueTest, Size ) {
 // === 测试 3: 单生产者多消费者线程安全 ===
 TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
-    TestFlagsQueue        queue( 100, blockManager );
+    TestFlagsQueue        queue( 100, &blockManager );
     using AllocMode         = TestFlagsQueue::AllocMode;
     const int num_items     = 1000;
     const int num_consumers = 4;
@@ -131,7 +131,7 @@ using ThrowingQueue        = FastQueue<ThrowingType, kBlockSize>;
 
 TEST( FastQueueTest, ExceptionSafety ) {
     ThrowingBlockManager blockManager( POOL_SIZE );
-    ThrowingQueue        queue( 10, blockManager );
+    ThrowingQueue        queue( 10, &blockManager );
     using AllocMode = ThrowingQueue::AllocMode;
 
     // 正常插入
@@ -154,7 +154,7 @@ TEST( FastQueueTest, ExceptionSafety ) {
 // === 测试 5: 使用 CounterCheckPolicy 的行为一致性 ===
 TEST( FastQueueTest, CounterPolicyBasic ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
-    TestCounterQueue        queue( 10, blockManager );
+    TestCounterQueue        queue( 10, &blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
 
     EXPECT_TRUE( queue.Enqueue<AllocMode::CanAlloc>( 42 ) );
@@ -167,7 +167,7 @@ TEST( FastQueueTest, CounterPolicyBasic ) {
 // === 测试 6: 大量数据压测 ===
 TEST( FastQueueTest, HighVolumeStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
-    TestCounterQueue        queue( 100, blockManager );
+    TestCounterQueue        queue( 100, &blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
     const int N     = 10000;
 
@@ -200,7 +200,7 @@ TEST( FastQueueTest, HighVolumeStressTest ) {
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
 TEST( FastQueueTest, MultiConsumerStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
-    TestCounterQueue        queue( 100, blockManager );
+    TestCounterQueue        queue( 100, &blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
 
     const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
@@ -268,7 +268,7 @@ struct ExceptionTest {
         }
     }
 
-    ExceptionTest(ExceptionTest&& other) : value( other.value ) {}
+    ExceptionTest( ExceptionTest&& other ) : value( other.value ) {}
 
     ExceptionTest& operator=( ExceptionTest other ) {
         if ( other.value == 5 ) {
@@ -288,7 +288,7 @@ TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = FastQueue<ExceptionTest, kBlockSize>;
     ExceptionBlockManger blockManager( POOL_SIZE );
-    ExceptionQueue       queue( 100, blockManager );
+    ExceptionQueue       queue( 100, &blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
 
     const unsigned long long        N             = 800;  // 每个数从 0 到 N-1

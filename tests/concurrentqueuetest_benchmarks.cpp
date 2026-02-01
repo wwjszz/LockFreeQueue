@@ -550,7 +550,7 @@ Result TestCQ_NormalBulkEnq_ConsTokenBulkDeq( const BenchmarkConfig& cfg ) {
 // 2. 普通 Enqueue / TryDequeue
 Result TestFastQueue_EnqDeq( const BenchmarkConfig& cfg ) {
     hakle::HakleCounterBlockManager<int, 32>                                                 block_manager( 32 );
-    hakle::FastQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, block_manager );
+    hakle::FastQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, &block_manager );
     const std::size_t                                                                        totalItems = cfg.itemsPerProd;
 
     std::atomic<std::size_t> produced{ 0 };
@@ -592,7 +592,7 @@ Result TestFastQueue_EnqDeq( const BenchmarkConfig& cfg ) {
 
 Result TestSlowQueue_EnqDeq( const BenchmarkConfig& cfg ) {
     hakle::HakleCounterBlockManager<int, 32> block_manager( 32 );
-    hakle::SlowQueue<int, 32>                queue( 32, block_manager );
+    hakle::SlowQueue<int, 32>                queue( 32, &block_manager );
     const std::size_t                        totalItems = cfg.itemsPerProd;
 
     std::atomic<std::size_t> produced{ 0 };
@@ -635,7 +635,7 @@ Result TestSlowQueue_EnqDeq( const BenchmarkConfig& cfg ) {
 // 2. 普通 Enqueue / TryDequeue
 Result TestFastQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
     hakle::HakleCounterBlockManager<int, 32>                                                 block_manager( 32 );
-    hakle::FastQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, block_manager );
+    hakle::FastQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, &block_manager );
     const std::size_t                                                                        totalItems = cfg.itemsPerProd * cfg.prodThreads;
 
     std::atomic<std::size_t> produced{ 0 };
@@ -643,7 +643,7 @@ Result TestFastQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
 
     int* values = new int[ cfg.itemsPerProd ];
     for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
-        values[ i ] = static_cast<int>(i);
+        values[ i ] = static_cast<int>( i );
     }
 
     double seconds = MeasureSeconds( [ & ] {
@@ -683,7 +683,7 @@ Result TestFastQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
 // 2. 普通 Enqueue / TryDequeue
 Result TestSlowQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
     hakle::HakleCounterBlockManager<int, 32>                                                 block_manager( 32 );
-    hakle::SlowQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, block_manager );
+    hakle::SlowQueue<int, 32, hakle::HakleAllocator<int>, hakle::HakleCounterBlock<int, 32>> queue( 32, &block_manager );
     const std::size_t                                                                        totalItems = cfg.itemsPerProd * cfg.prodThreads;
 
     std::atomic<std::size_t> produced{ 0 };
@@ -691,7 +691,7 @@ Result TestSlowQueue_EnqDeqBulk( const BenchmarkConfig& cfg ) {
 
     int* values = new int[ cfg.itemsPerProd ];
     for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
-        values[ i ] = static_cast<int>(i);
+        values[ i ] = static_cast<int>( i );
     }
 
     double seconds = MeasureSeconds( [ & ] {

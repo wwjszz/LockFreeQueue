@@ -5,7 +5,9 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
+#include <atomic>
 #include <climits>
+#include <concepts>
 #include <type_traits>
 
 #include "common/common.h"
@@ -36,15 +38,15 @@ namespace hakle {
 #else
 
 // support 10 levels
-#define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_7( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_6( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_6( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_5( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_5( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_4( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_4( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_3( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_3( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_2( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_2( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT(concat) HAKLE_EXPAND_1( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_7( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_6( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_6( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_5( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_5( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_4( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_4( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_3( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_3( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_2( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_2( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_1( macro, concat, __VA_ARGS__ )
 #define HAKLE_EXPAND_1( macro, concat, first ) macro( first )
 #define HAKLE_EXPAND_0( macro, concat )
 
@@ -60,7 +62,7 @@ namespace hakle {
 #define HAKLE_EXPAND_COMMA_1( macro, first ) macro( first )
 #define HAKLE_EXPAND_COMMA_0( macro )
 
-#define HAKLE_EXPAND_CONCAT(x) x
+#define HAKLE_EXPAND_CONCAT( x ) x
 
 #define HAKLE_ARGS_COUNT( ... ) HAKLE_ARGS_COUNT_IMPL( __VA_ARGS__, 5, 4, 3, 2, 1, 0 )
 #define HAKLE_ARGS_COUNT_IMPL( _1, _2, _3, _4, _5, N, ... ) N
@@ -68,7 +70,7 @@ namespace hakle {
 #define HAKLE_CONCAT_( a, b ) a##b
 #define HAKLE_CONCAT( a, b ) HAKLE_CONCAT_( a, b )
 
-#define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, HAKLE_EXPAND_CONCAT(concat), __VA_ARGS__ )
+#define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, HAKLE_EXPAND_CONCAT( concat ), __VA_ARGS__ )
 #define HAKLE_FOR_EACH_COMMA( macro, ... ) HAKLE_CONCAT( HAKLE_EXPAND_COMMA_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, __VA_ARGS__ )
 
 #endif
@@ -80,7 +82,8 @@ namespace hakle {
 #define HAKLE_OP_MOVE_ATOMIC( X ) X.store( std::move( Other.X.load( std::memory_order_relaxed ) ), std::memory_order_relaxed )
 #define HAKLE_OP_MOVE_ELEM( X ) X() = std::move( Other.X() )
 #define HAKLE_OP_MOVE_ATOMIC_ELEM( X ) X().store( std::move( Other.X().load( std::memory_order_relaxed ) ), std::memory_order_relaxed )
-
+#define HAKLE_SWAP( X ) swap( X, Other.X )
+#define HAKLE_SWAP_ATOMIC( X ) core::SwapRelaxed( X, Other.X )
 
 #if HAKLE_CPP_VERSION < 17
 
@@ -127,9 +130,6 @@ template <std::size_t N>
 using MakeIndexSequence = std::make_index_sequence<N>;
 #endif
 
-
-
-
 template <class Fn, class Tuple, std::size_t... Idx>
 constexpr auto ApplyImpl( Fn&& fn, Tuple&& tuple, IndexSequence<Idx...> ) -> decltype( fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... ) ) {
     return fn( std::get<Idx>( std::forward<Tuple>( tuple ) )... );
@@ -142,6 +142,16 @@ constexpr auto Apply( Fn&& fn, Tuple&& tuple )
     return ApplyImpl( std::forward<Fn>( fn ), std::forward<Tuple>( tuple ), Indices{} );
 }
 #endif
+
+namespace core {
+    template <class T>
+    HAKLE_REQUIRES( std::move_constructible<T>&& std::is_move_assignable_v<T> )
+    inline static constexpr void SwapRelaxed( std::atomic<T>& Left, std::atomic<T>& Right ) noexcept {
+        T Temp = Left.load( std::memory_order_relaxed );
+        Left.store( Right.load( std::memory_order_relaxed ), std::memory_order_relaxed );
+        Right.store( Temp, std::memory_order_relaxed );
+    }
+}  // namespace core
 
 template <class T>
 HAKLE_REQUIRES( std::is_unsigned_v<T> )

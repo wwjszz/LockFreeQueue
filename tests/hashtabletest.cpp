@@ -577,8 +577,6 @@ TEST_F( HashTableTest, MoveSemantics ) {
     EXPECT_EQ( moved_table.GetSize(), original_size );
     EXPECT_EQ( table->GetSize(), 0 );
 
-
-
     // move operator=
     TestHashTable moved_table2{};
     moved_table2 = std::move( moved_table );
@@ -595,6 +593,24 @@ TEST_F( HashTableTest, MoveSemantics ) {
 
     // 验证大小正确
     EXPECT_EQ( moved_table2.GetSize(), original_size );
+    EXPECT_EQ( moved_table.GetSize(), 0 );
+
+    TestHashTable swap_table{};
+    swap_table = std::move( moved_table2 );
+
+    // 验证数据被移动
+    for ( uint32_t i = 0; i < 10; ++i ) {
+        uint32_t outValue = 0;
+        bool     found    = swap_table.Get( i, outValue );
+        EXPECT_TRUE( found );
+        EXPECT_EQ( outValue, i * 100 );
+        bool found2 = moved_table2.Get( i, outValue );
+        EXPECT_FALSE( found2 );
+    }
+
+    // 验证大小正确
+    EXPECT_EQ( swap_table.GetSize(), original_size );
+    EXPECT_EQ( moved_table2.GetSize(), 0 );
 }
 
 // 边界值测试
