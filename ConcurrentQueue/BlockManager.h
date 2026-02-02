@@ -392,20 +392,17 @@ private:
 #if HAKLE_CPP_VERSION >= 20
 
 template <class Node, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
-HAKLE_REQUIRES( std::swappable<FreeList<Node, ALLOCATOR_TYPE>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( FreeList<Node, ALLOCATOR_TYPE>& lhs, FreeList<Node, ALLOCATOR_TYPE>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( FreeList<Node, ALLOCATOR_TYPE>& lhs, FreeList<Node, ALLOCATOR_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
 template <class BLOCK_TYPE, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
-HAKLE_REQUIRES( std::swappable<BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, BlockPool<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
 template <class BLOCK_TYPE, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
-HAKLE_REQUIRES( std::swappable<HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& lhs, HakleBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
@@ -417,9 +414,19 @@ using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>>
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>>
 using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>>;
 
-template <HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
+inline constexpr std::size_t HAKLE_DEFAULT_POOL_SIZE = 1024;
+
+#ifdef HAKLE_USE_CONCEPT
+template <class T>
+concept IsHakleBlockManagerInstance = std::is_same_v<T, HakleBlockManager<typename T::BlockType, typename T::AllocatorType>>;
+#endif
+
+template <HAKLE_CONCEPT( IsHakleBlockManagerInstance ) BLOCK_MANAGER_TYPE>
 inline BLOCK_MANAGER_TYPE& GetBlockManager() {
-    static BLOCK_MANAGER_TYPE BlockManager;
+#ifndef HAKLE_USE_CONCEPT
+    static_assert( std::is_same<BlockManagerBase<typename BLOCK_MANAGER_TYPE::BlockType, typename BLOCK_MANAGER_TYPE::AllocatorType>, BLOCK_MANAGER_TYPE>::value, "BLOCK_MANAGER_TYPE must be HakleBlockManager" );
+#endif
+    static BLOCK_MANAGER_TYPE BlockManager( HAKLE_DEFAULT_POOL_SIZE );
     return BlockManager;
 }
 

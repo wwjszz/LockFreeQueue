@@ -82,92 +82,58 @@ include_directories(${PROJECT_SOURCE_DIR}/)
 # targets
 # ============================================================================
 
-add_executable(normaltest
-        tests/test.cpp
-)
-
-add_executable(unittest
-        tests/unittests.cpp
-        tests/simplethread.cpp
-)
-
-enable_testing()
-
+add_executable(normaltest tests/test.cpp)
+add_executable(unittest tests/unittests.cpp tests/simplethread.cpp)
 add_executable(samples_linearsearchmaptest tests/samples_linearsearchmaptest.cpp)
-target_link_libraries(samples_linearsearchmaptest PRIVATE gtest_main)
-
 add_executable(samples_hashtabletest tests/samples_hashtabletest.cpp)
-target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
-
 add_executable(hashtabletest tests/hashtabletest.cpp)
-target_link_libraries(hashtabletest PRIVATE gtest_main)
-
 add_executable(freelisttest tests/freelisttest.cpp)
-target_link_libraries(freelisttest PRIVATE gtest_main)
-
 add_executable(blockpooltest tests/blockpooltest.cpp)
-target_link_libraries(blockpooltest PRIVATE gtest_main)
-
 add_executable(fastqueuetest tests/fastqueuetest.cpp tests/Debug/ThrowOn.cpp)
-target_link_libraries(fastqueuetest PRIVATE gtest_main)
-
 add_executable(fastqueuetest_exception tests/fastqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
-target_link_libraries(fastqueuetest_exception PRIVATE gtest_main)
-
 add_executable(slowqueuetest tests/slowqueuetest.cpp tests/Debug/ThrowOn.cpp)
-target_link_libraries(slowqueuetest PRIVATE gtest_main)
-
 add_executable(slowqueuetest_exception tests/slowqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
-target_link_libraries(slowqueuetest_exception PRIVATE gtest_main)
-
 add_executable(fastqueuetest_leaks tests/fastqueuetest_leaks.cpp)
-target_link_libraries(fastqueuetest_leaks PRIVATE gtest_main)
-
 add_executable(slowqueuetest_leaks tests/slowqueuetest_leaks.cpp)
+add_executable(other_test tests/other_test.cpp)
+add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
+add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
+add_executable(concurrentqueuetest_swap_check tests/concurrentqueuetest_swap_check.cpp)
+add_executable(concurrentqueuetest_obj_check tests/cq_obj_check.cpp)
+add_executable(concurrentqueuetest_exception_obj_check tests/cq_exception_obj_check.cpp)
+add_executable(int_bench tests/main_bench.cpp)
+add_executable(obj_bench tests/obj_main_bench.cpp)
+
+target_link_libraries(samples_linearsearchmaptest PRIVATE gtest_main)
+target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
+target_link_libraries(hashtabletest PRIVATE gtest_main)
+target_link_libraries(freelisttest PRIVATE gtest_main)
+target_link_libraries(blockpooltest PRIVATE gtest_main)
+target_link_libraries(fastqueuetest PRIVATE gtest_main)
+target_link_libraries(fastqueuetest_exception PRIVATE gtest_main)
+target_link_libraries(slowqueuetest PRIVATE gtest_main)
+target_link_libraries(slowqueuetest_exception PRIVATE gtest_main)
+target_link_libraries(fastqueuetest_leaks PRIVATE gtest_main)
 target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
+target_link_libraries(other_test PRIVATE gtest_main)
+target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
+target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)
+target_link_libraries(concurrentqueuetest_swap_check PRIVATE gtest_main)
+target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
+target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
+
+target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
+target_link_libraries(obj_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
 
 target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-
-add_executable(other_test tests/other_test.cpp)
-target_link_libraries(other_test PRIVATE gtest_main)
-# target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
-
-add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
-target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
-
 target_compile_definitions(concurrentqueuetest_benchmarks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-
-add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
-target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)
-
 target_compile_definitions(concurrentqueuetest_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-
-add_executable(concurrentqueuetest_obj_check tests/cq_obj_check.cpp)
-target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
-
+target_compile_definitions(concurrentqueuetest_swap_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(concurrentqueuetest_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-
-add_executable(concurrentqueuetest_exception_obj_check tests/cq_exception_obj_check.cpp)
-target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
-
 target_compile_definitions(concurrentqueuetest_exception_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 
-add_executable(int_bench tests/main_bench.cpp)
-
-target_link_libraries(int_bench
-        PRIVATE
-        benchmark::benchmark       # 主库
-        benchmark::benchmark_main  # 提供 main()
-)
-
-add_executable(obj_bench tests/obj_main_bench.cpp)
-
-target_link_libraries(obj_bench
-        PRIVATE
-        benchmark::benchmark       # 主库
-        benchmark::benchmark_main  # 提供 main()
-)
+enable_testing()
 
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
@@ -181,3 +147,4 @@ add_test(NAME slowqueuetest_exception COMMAND slowqueuetest_exception)
 add_test(NAME slowqueuetest_leaks COMMAND slowqueuetest_leaks)
 add_test(NAME fastqueuetest_leaks COMMAND fastqueuetest_leaks)
 add_test(NAME concurrentqueuetest_check COMMAND concurrentqueuetest_check)
+add_test(NAME concurrentqueuetest_swap_check COMMAND concurrentqueuetest_swap_check)

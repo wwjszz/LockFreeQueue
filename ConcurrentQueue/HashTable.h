@@ -82,8 +82,7 @@ enum class HashTableStatus {
 };
 
 // TODO: more useful
-template <class TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, std::size_t INITIAL_HASH_SIZE, class HashType = core::Hash<TKey>,
-          class Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
+template <class TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, std::size_t INITIAL_HASH_SIZE, class HashType = core::Hash<TKey>, class Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
 HAKLE_REQUIRES( IsSupportHash<TKey, HashType> )
 class HashTable {
 private:
@@ -111,8 +110,7 @@ public:
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     HAKLE_CPP14_CONSTEXPR HashTable( HashTable&& Other ) noexcept
-        : HAKLE_MOVE_ATOMIC( EntriesCount ), PairAllocatorPair( ValueInitTag{}, std::move( Other.PairAllocator() ) ), HAKLE_MOVE_PAIR_ATOMIC1( NodeAllocatorPair ),
-          HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, Hash, INVALID_KEY ) {
+        : HAKLE_MOVE_ATOMIC( EntriesCount ), PairAllocatorPair( ValueInitTag{}, std::move( Other.PairAllocator() ) ), HAKLE_MOVE_PAIR_ATOMIC1( NodeAllocatorPair ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, Hash, INVALID_KEY ) {
         Other.Reset();
     }
 
@@ -133,8 +131,7 @@ public:
 
 #if HAKLE_CPP_VERSION >= 20
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept
-        HAKLE_REQUIRES( std::swappable<HashType>&& std::swappable<TKey>&& std::swappable<PairAllocatorType>&& std::swappable<NodeAllocatorType> ) {
+    HAKLE_CPP14_CONSTEXPR void swap( HashTable& Other ) noexcept HAKLE_REQUIRES( std::swappable<HashType>&& std::swappable<TKey>&& std::swappable<PairAllocatorType>&& std::swappable<NodeAllocatorType> ) {
         // can't swap during resizing.
         if ( this != &Other ) {
             HAKLE_FOR_EACH( HAKLE_SWAP_ATOMIC, HAKLE_SEM, EntriesCount, MainHash() );
@@ -374,8 +371,7 @@ private:
 
 #if HAKLE_CPP_VERSION >= 20
 template <class TKey, class TValue, std::size_t INITIAL_HASH_SIZE, class HashType, class Allocator>
-HAKLE_REQUIRES( std::swappable<HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>> )
-HAKLE_CPP14_CONSTEXPR void swap( HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& lhs, HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& rhs ) noexcept {
+HAKLE_CPP14_CONSTEXPR void swap( HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& lhs, HashTable<TKey, TValue, INITIAL_HASH_SIZE, HashType, Allocator>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 #endif

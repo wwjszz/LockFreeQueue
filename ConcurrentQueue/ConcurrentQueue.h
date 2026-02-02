@@ -94,8 +94,7 @@ public:
     constexpr explicit _QueueBase( const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept : ValueAllocatorPair( nullptr, InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~_QueueBase() = default;
 
-    HAKLE_CPP14_CONSTEXPR _QueueBase( _QueueBase&& Other ) noexcept
-        : HAKLE_FOR_EACH_COMMA( HAKLE_MOVE_ATOMIC, HeadIndex, TailIndex, DequeueAttemptsCount, DequeueFailedCount ), HAKLE_MOVE( ValueAllocatorPair ) {}
+    HAKLE_CPP14_CONSTEXPR _QueueBase( _QueueBase&& Other ) noexcept : HAKLE_FOR_EACH_COMMA( HAKLE_MOVE_ATOMIC, HeadIndex, TailIndex, DequeueAttemptsCount, DequeueFailedCount ), HAKLE_MOVE( ValueAllocatorPair ) {}
 
     HAKLE_CPP14_CONSTEXPR _QueueBase& operator=( _QueueBase&& Other ) noexcept {
         if ( this != &Other ) {
@@ -147,8 +146,7 @@ protected:
 };
 
 // SPMC Queue
-template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>,
-          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
+template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
 class FastQueue : public _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
     using Base = _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
@@ -176,10 +174,8 @@ private:
     using IndexEntryArrayAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntryArray>;
 
 public:
-    explicit HAKLE_CPP14_CONSTEXPR FastQueue( std::size_t InSize, BlockManagerType* InBlockManager = &GetBlockManager<BlockManagerType>(),
-                                              const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
-        : Base( InAllocator ), BlockManager( InBlockManager ), IndexEntryAllocatorPair( 0, IndexEntryAllocatorType( InAllocator ) ),
-          IndexEntryArrayAllocatorPair( 0, IndexEntryArrayAllocatorType( InAllocator ) ) {
+    explicit HAKLE_CPP14_CONSTEXPR FastQueue( std::size_t InSize, BlockManagerType* InBlockManager = &GetBlockManager<BlockManagerType>(), const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
+        : Base( InAllocator ), BlockManager( InBlockManager ), IndexEntryAllocatorPair( 0, IndexEntryAllocatorType( InAllocator ) ), IndexEntryArrayAllocatorPair( 0, IndexEntryArrayAllocatorType( InAllocator ) ) {
         std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
             InitialSize = 2;
@@ -192,8 +188,7 @@ public:
     HAKLE_CPP20_CONSTEXPR ~FastQueue() noexcept { Clear(); }
 
     HAKLE_CPP14_CONSTEXPR FastQueue( FastQueue&& Other ) noexcept
-        : Base( std::move( Other ) ), HAKLE_MOVE_ATOMIC( CurrentIndexEntryArray ),
-          HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, BlockManager, PO_NextIndexEntry, PO_PrevEntries, IndexEntryAllocatorPair, IndexEntryArrayAllocatorPair ) {
+        : Base( std::move( Other ) ), HAKLE_MOVE_ATOMIC( CurrentIndexEntryArray ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, BlockManager, PO_NextIndexEntry, PO_PrevEntries, IndexEntryAllocatorPair, IndexEntryArrayAllocatorPair ) {
         Other.Reset();
     }
 
@@ -785,9 +780,9 @@ private:
     using IndexEntryPointerAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntry*>;
 
 public:
-    HAKLE_CPP14_CONSTEXPR SlowQueue( std::size_t InSize, BlockManagerType* InBlockManager = GetBlockManager<BlockManagerType>(), const ValueAllocatorType& InAllocator = ValueAllocatorType{} )
-        : Base( InAllocator ), IndexEntryAllocatorPair( ValueInitTag{}, IndexEntryAllocatorType( InAllocator ) ),
-          IndexEntryArrayAllocatorPair( InBlockManager, IndexEntryArrayAllocatorType( InAllocator ) ), IndexEntryPointerAllocatorPair( 0, IndexEntryPointerAllocatorType( InAllocator ) ) {
+    HAKLE_CPP14_CONSTEXPR SlowQueue( std::size_t InSize, BlockManagerType* InBlockManager = &GetBlockManager<BlockManagerType>(), const ValueAllocatorType& InAllocator = ValueAllocatorType{} )
+        : Base( InAllocator ), IndexEntryAllocatorPair( ValueInitTag{}, IndexEntryAllocatorType( InAllocator ) ), IndexEntryArrayAllocatorPair( InBlockManager, IndexEntryArrayAllocatorType( InAllocator ) ),
+          IndexEntryPointerAllocatorPair( 0, IndexEntryPointerAllocatorType( InAllocator ) ) {
         std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
             InitialSize = 2;
@@ -799,8 +794,7 @@ public:
 
     HAKLE_CPP20_CONSTEXPR ~SlowQueue() { Clear(); }
 
-    HAKLE_CPP14_CONSTEXPR SlowQueue( SlowQueue&& Other ) noexcept
-        : Base( std::move( Other ) ), HAKLE_MOVE_PAIR_ATOMIC1( IndexEntryAllocatorPair ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, IndexEntryArrayAllocatorPair, IndexEntryPointerAllocatorPair ) {
+    HAKLE_CPP14_CONSTEXPR SlowQueue( SlowQueue&& Other ) noexcept : Base( std::move( Other ) ), HAKLE_MOVE_PAIR_ATOMIC1( IndexEntryAllocatorPair ), HAKLE_FOR_EACH_COMMA( HAKLE_MOVE, IndexEntryArrayAllocatorPair, IndexEntryPointerAllocatorPair ) {
         Other.Reset();
     }
 
@@ -863,8 +857,7 @@ public:
     }
 
 #if HAKLE_CPP_VERSION >= 20
-    HAKLE_CPP14_CONSTEXPR void swap( SlowQueue& Other ) noexcept
-        HAKLE_REQUIRES( std::swappable<IndexEntryAllocatorType>&& std::swappable<IndexEntryArrayAllocatorType>&& std::swappable<IndexEntryPointerAllocatorType> ) {
+    HAKLE_CPP14_CONSTEXPR void swap( SlowQueue& Other ) noexcept HAKLE_REQUIRES( std::swappable<IndexEntryAllocatorType>&& std::swappable<IndexEntryArrayAllocatorType>&& std::swappable<IndexEntryPointerAllocatorType> ) {
         Base::swap( Other );
         HAKLE_SWAP_ATOMIC( CurrentIndexEntryArray() );
         using std::swap;
@@ -1400,24 +1393,19 @@ public:
           ImplicitProducerAllocatorPair( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ), ImplicitProducerAllocatorType( InAllocator ) ) {}
 
     template <class... Args1, class... Args2>
-    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), Args1&&...>&&
-                                                                                                std::invocable<decltype( Traits::MakeImplicitBlockManager ), Args2&&...> )
+    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), Args1&&...>&& std::invocable<decltype( Traits::MakeImplicitBlockManager ), Args2&&...> )
     explicit constexpr ConcurrentQueue( std::piecewise_construct_t, std::tuple<Args1...> FirstArgs, std::tuple<Args2...> SecondArgs, const AllocatorType& InAllocator )
         :
 #if HAKLE_CPP_VERSION >= 17
-          ExplicitProducerAllocatorPair(
-              std::apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
-              ExplicitProducerAllocatorType( InAllocator ) ),
-          ImplicitProducerAllocatorPair(
-              std::apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
-              ImplicitProducerAllocatorType( InAllocator ) )
+          ExplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
+                                         ExplicitProducerAllocatorType( InAllocator ) ),
+          ImplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
+                                         ImplicitProducerAllocatorType( InAllocator ) )
 #else
-          ExplicitProducerAllocatorPair(
-              hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
-              ExplicitProducerAllocatorType( InAllocator ) ),
-          ImplicitProducerAllocatorPair(
-              hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
-              ImplicitProducerAllocatorType( InAllocator ) )
+          ExplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
+                                         ExplicitProducerAllocatorType( InAllocator ) ),
+          ImplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
+                                         ImplicitProducerAllocatorType( InAllocator ) )
 #endif
     {
     }
@@ -1448,10 +1436,9 @@ public:
     ConcurrentQueue& operator=( const ConcurrentQueue& Other ) = delete;
 
 #if HAKLE_CPP_VERSION >= 20
-    HAKLE_CPP14_CONSTEXPR void swap( ConcurrentQueue& Other ) noexcept HAKLE_REQUIRES(
-        std::swappable<HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash>>&&
-            std::swappable<CompressPair<ExplicitBlockManagerType, ExplicitProducerAllocatorType>>&& std::swappable<CompressPair<ImplicitBlockManagerType, ImplicitProducerAllocatorType>>&&
-                std::swappable<AllocatorType>&& std::swappable<ProducerListNodeAllocatorType> ) {
+    HAKLE_CPP14_CONSTEXPR void swap( ConcurrentQueue& Other ) noexcept
+        HAKLE_REQUIRES( std::swappable<HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash>>&& std::swappable<CompressPair<ExplicitBlockManagerType, ExplicitProducerAllocatorType>>&&
+                            std::swappable<CompressPair<ImplicitBlockManagerType, ImplicitProducerAllocatorType>>&& std::swappable<AllocatorType>&& std::swappable<ProducerListNodeAllocatorType> ) {
         HAKLE_FOR_EACH( HAKLE_SWAP_ATOMIC, HAKLE_SEM, ProducerListsHead, ProducerCount, NextExplicitConsumerId(), GlobalExplicitConsumerOffset() );
         using std::swap;
         HAKLE_FOR_EACH( HAKLE_SWAP, HAKLE_SEM, ImplicitMap, ExplicitProducerAllocatorPair, ImplicitProducerAllocatorPair, ValueAllocator(), ProducerListNodeAllocator() );
@@ -1705,8 +1692,7 @@ public:
         // TODO: memory_order
         explicit ConsumerToken( ConcurrentQueue& queue ) noexcept : InitialOffset( queue.NextExplicitConsumerId().fetch_add( 1, std::memory_order_relaxed ) ) {}
         ConsumerToken( ConsumerToken&& Other ) noexcept
-            : InitialOffset( Other.InitialOffset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ),
-              DesiredProducer( Other.DesiredProducer ) {}
+            : InitialOffset( Other.InitialOffset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ), DesiredProducer( Other.DesiredProducer ) {}
 
         ConsumerToken& operator=( ConsumerToken&& Other ) noexcept {
             swap( Other );
@@ -1962,7 +1948,7 @@ private:
     ImplicitProducer* GetOrAddImplicitProducer() {
         details::thread_id_t thread_id = details::thread_id();
         ImplicitProducer*    producer  = nullptr;
-        HashTableStatus Result = ImplicitMap.GetOrAddByFunc( thread_id, producer, [ this, &producer ]() { return producer = GetProducerListNode( ProducerType::Implicit )->GetImplicitProducer(); } );
+        HashTableStatus      Result    = ImplicitMap.GetOrAddByFunc( thread_id, producer, [ this, &producer ]() { return producer = GetProducerListNode( ProducerType::Implicit )->GetImplicitProducer(); } );
         if ( Result == HashTableStatus::FAILED ) {
             return nullptr;
         }
@@ -2001,20 +1987,17 @@ private:
 
 #if HAKLE_CPP_VERSION >= 20
 template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-HAKLE_REQUIRES( std::swappable<FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
 template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-HAKLE_REQUIRES( std::swappable<SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
 template <class T, class Allocator, class Traits>
-HAKLE_REQUIRES( std::swappable<ConcurrentQueue<T, Allocator, Traits>> )
-inline HAKLE_CPP14_CONSTEXPR void swap( ConcurrentQueue<T, Allocator, Traits>& lhs, ConcurrentQueue<T, Allocator, Traits>& rhs ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void swap( ConcurrentQueue<T, Allocator, Traits>& lhs, ConcurrentQueue<T, Allocator, Traits>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 

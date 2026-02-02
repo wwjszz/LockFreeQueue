@@ -3,6 +3,7 @@
 //
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -472,8 +473,8 @@ TEST_F( HashTableTest, StressTest ) {
         t.join();
     }
 
-    std::cout << "Stress test completed: " << total_operations.load() << " operations (" << add_operations.load() << " adds, " << get_operations.load() << " gets, " << set_operations.load()
-              << " sets) in " << duration_seconds << " seconds. Final size: " << table->GetSize() << std::endl;
+    std::cout << "Stress test completed: " << total_operations.load() << " operations (" << add_operations.load() << " adds, " << get_operations.load() << " gets, " << set_operations.load() << " sets) in " << duration_seconds
+              << " seconds. Final size: " << table->GetSize() << std::endl;
     EXPECT_GT( total_operations.load(), 0 );
 }
 
@@ -595,8 +596,9 @@ TEST_F( HashTableTest, MoveSemantics ) {
     EXPECT_EQ( moved_table2.GetSize(), original_size );
     EXPECT_EQ( moved_table.GetSize(), 0 );
 
-    TestHashTable swap_table{};
-    swap_table = std::move( moved_table2 );
+    TestHashTable swap_table{ UINT32_MAX };
+
+    swap_table.swap( moved_table2 );
 
     // 验证数据被移动
     for ( uint32_t i = 0; i < 10; ++i ) {
@@ -611,6 +613,25 @@ TEST_F( HashTableTest, MoveSemantics ) {
     // 验证大小正确
     EXPECT_EQ( swap_table.GetSize(), original_size );
     EXPECT_EQ( moved_table2.GetSize(), 0 );
+
+    TestHashTable swap_table2{ UINT32_MAX };
+
+    using std::swap;
+    swap( swap_table, swap_table2 );
+
+    // 验证数据被移动
+    for ( uint32_t i = 0; i < 10; ++i ) {
+        uint32_t outValue = 0;
+        bool     found    = swap_table2.Get( i, outValue );
+        EXPECT_TRUE( found );
+        EXPECT_EQ( outValue, i * 100 );
+        bool found2 = swap_table.Get( i, outValue );
+        EXPECT_FALSE( found2 );
+    }
+
+    // 验证大小正确
+    EXPECT_EQ( swap_table.GetSize(), 0 );
+    EXPECT_EQ( swap_table2.GetSize(), original_size );
 }
 
 // 边界值测试

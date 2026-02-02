@@ -35,6 +35,11 @@ namespace hakle {
 #define HAKLE_FOR_EACH_IMPL_() HAKLE_FOR_EACH_IMPL
 #define HAKLE_FOR_EACH_IMPL_COMMA_() HAKLE_FOR_EACH_IMPL_COMMA
 
+#define HAKLE_SWAP_REQUIES     \
+    HAKLE_REQUIRES( requires { \
+        { lhs.swap( rhs ) };   \
+    } )
+
 #else
 
 // support 10 levels
