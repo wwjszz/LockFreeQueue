@@ -19,6 +19,15 @@
 
 namespace hakle {
 
+template <class, class Alloc, class... Args>
+inline constexpr bool HasConstructImpl = false;
+
+template <class Alloc, class... Args>
+inline constexpr bool HasConstructImpl<decltype( ( void )std::declval<Alloc>().Construct( std::declval<Args>()... ) ), Alloc, Args...> = true;
+
+template <class Alloc, class... Args>
+inline constexpr bool HasConstructV = HasConstructImpl<void, Alloc, Args...>;
+
 template <class...>
 using VoidT = void;
 
@@ -89,7 +98,12 @@ struct HakeAllocatorTraits {
     static void Deallocate( AllocatorType& Allocator, Pointer ptr ) noexcept { Allocator.Deallocate( ptr ); }
     static void Deallocate( AllocatorType& Allocator, Pointer ptr, SizeType n ) noexcept { Allocator.Deallocate( ptr, n ); }
 
-    template <class... Args>
+    template <class... Args, typename std::enable_if<!HasConstructV<AllocatorType, Pointer, Args...>, int>::type = 0>
+    static void Construct( HAKLE_MAYBE_UNUSED AllocatorType& Allocator, Pointer ptr, Args&&... args ) {
+        HAKLE_CONSTRUCT( ptr, std::forward<Args>( args )... );
+    }
+
+    template <class... Args, typename std::enable_if<HasConstructV<AllocatorType, Pointer, Args...>, int>::type = 0>
     static void Construct( AllocatorType& Allocator, Pointer ptr, Args&&... args ) {
         Allocator.Construct( ptr, std::forward<Args>( args )... );
     }
@@ -100,7 +114,7 @@ struct HakeAllocatorTraits {
 };
 
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
-inline static std::mutex& GetMutex() {
+inline std::mutex& GetMutex() {
     static std::mutex print_mtx;
     return print_mtx;
 }

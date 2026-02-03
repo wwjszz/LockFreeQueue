@@ -76,7 +76,7 @@ TEST( ConcurrentQueueCorrectness, MultiProducerMultiConsumer_NormalEnqDeq ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -105,8 +105,8 @@ TEST( ConcurrentQueueCorrectness, MultiProducerMultiConsumer_NormalEnqDeq ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -203,7 +203,7 @@ TEST( ConcurrentQueueCorrectness, MultiProducerMultiConsumer_BulkEnqDeq ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -237,8 +237,8 @@ TEST( ConcurrentQueueCorrectness, MultiProducerMultiConsumer_BulkEnqDeq ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -336,7 +336,7 @@ TEST( ConcurrentQueueCorrectness, ProducerToken_Enq_TryDequeueFromProducer ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -365,8 +365,8 @@ TEST( ConcurrentQueueCorrectness, ProducerToken_Enq_TryDequeueFromProducer ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -472,7 +472,7 @@ TEST( ConcurrentQueueCorrectness, ProducerTokenBulkEnq_ConsumerTokenBulkDeq ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -506,8 +506,8 @@ TEST( ConcurrentQueueCorrectness, ProducerTokenBulkEnq_ConsumerTokenBulkDeq ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -599,7 +599,7 @@ TEST( ConcurrentQueueCorrectness, NormalEnq_ConsumerTokenDeq_SingleElement ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -628,8 +628,8 @@ TEST( ConcurrentQueueCorrectness, NormalEnq_ConsumerTokenDeq_SingleElement ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -729,7 +729,7 @@ TEST( ConcurrentQueueCorrectness, NormalBulkEnq_ConsumerTokenBulkDeq ) {
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -763,8 +763,8 @@ TEST( ConcurrentQueueCorrectness, NormalBulkEnq_ConsumerTokenBulkDeq ) {
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 
@@ -864,7 +864,7 @@ TEST( ConcurrentQueueCorrectness, ProducerTokenEnq_ConsumerTokenDeq_SingleElemen
     std::size_t queue_size = queue.Size();
 
     hakle::ConcurrentQueue<int> queue2 = std::move( queue );
-    printf( "queue_size= %lu\n", queue_size );
+    printf( "queue_size= %llu\n", queue_size );
 
     EXPECT_EQ( queue2.Size(), queue_size );
     EXPECT_EQ( queue.Size(), 0 );
@@ -893,8 +893,8 @@ TEST( ConcurrentQueueCorrectness, ProducerTokenEnq_ConsumerTokenDeq_SingleElemen
 
     hakle::ConcurrentQueue<int> queue3;
     queue3                  = std::move( queue2 );
-    std::size_t queue_size3 = queue3.Size();
-    printf( "queue_size2= %lu\n", queue_size2 );
+//    std::size_t queue_size3 = queue3.Size();
+    printf( "queue_size2= %llu\n", queue_size2 );
 
     EXPECT_EQ( queue3.Size(), queue_size2 );
 

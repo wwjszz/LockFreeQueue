@@ -103,7 +103,9 @@ add_executable(concurrentqueuetest_obj_check tests/cq_obj_check.cpp)
 add_executable(concurrentqueuetest_exception_obj_check tests/cq_exception_obj_check.cpp)
 add_executable(int_bench tests/main_bench.cpp)
 add_executable(obj_bench tests/obj_main_bench.cpp)
+add_executable(customized tests/customized.cpp)
 
+target_link_libraries(customized PRIVATE gtest_main)
 target_link_libraries(samples_linearsearchmaptest PRIVATE gtest_main)
 target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
 target_link_libraries(hashtabletest PRIVATE gtest_main)
@@ -123,8 +125,10 @@ target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
 target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
 
 target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
+# if use FreeList_DAS, use target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main libatomic)
 target_link_libraries(obj_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
 
+target_compile_definitions(hashtabletest PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(concurrentqueuetest_benchmarks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
@@ -132,6 +136,7 @@ target_compile_definitions(concurrentqueuetest_check PRIVATE ENABLE_MEMORY_LEAK_
 target_compile_definitions(concurrentqueuetest_swap_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(concurrentqueuetest_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 target_compile_definitions(concurrentqueuetest_exception_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
 
 enable_testing()
 
@@ -148,3 +153,4 @@ add_test(NAME slowqueuetest_leaks COMMAND slowqueuetest_leaks)
 add_test(NAME fastqueuetest_leaks COMMAND fastqueuetest_leaks)
 add_test(NAME concurrentqueuetest_check COMMAND concurrentqueuetest_check)
 add_test(NAME concurrentqueuetest_swap_check COMMAND concurrentqueuetest_swap_check)
+add_test(NAME customized COMMAND customized)

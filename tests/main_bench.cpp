@@ -22,10 +22,6 @@ constexpr std::size_t kConsThreads  = 20;
 constexpr std::size_t kItemsPerProd = 100000;
 constexpr std::size_t kBulkSize     = 128;
 
-// 一个小工具：把一次 run 中处理的总元素数写入 counters，方便看吞吐
-
-#if USE_MY
-
 // 1. 普通 Enqueue / TryDequeue
 static void BM_CQ_NormalEnqDeq( benchmark::State& state ) {
     for ( auto _ : state ) {
@@ -422,7 +418,7 @@ static void BM_CQ_NormalBulkEnq_ConsTokenBulkDeq( benchmark::State& state ) {
 }
 BENCHMARK( BM_CQ_NormalBulkEnq_ConsTokenBulkDeq )->MeasureProcessCPUTime()->Iterations( 10 )->Unit( benchmark::kMillisecond );
 
-#endif  // USE_MY
+
 
 // ---------------- moodycamel 版本，同样模式 ----------------
 

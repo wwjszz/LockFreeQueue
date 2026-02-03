@@ -15,6 +15,8 @@
 #include "common/allocator.h"
 #include "common/utility.h"
 
+#include <cassert>
+
 // BlockPool + FreeList
 namespace hakle {
 
@@ -77,7 +79,9 @@ struct FreeListNode : MemoryBase {
 template <HAKLE_CONCEPT( IsFreeListNode ) Node, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<Node>>
 class FreeList {
 public:
+#ifndef HAKLE_USE_CONCEPT
     static_assert( std::is_base_of<FreeListNode<Node>, Node>::value, "Node must be derived from FreeListNode<Node>" );
+#endif
 
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
@@ -193,6 +197,91 @@ private:
 
     // compressed allocator
     CompressPair<std::atomic<Node*>, AllocatorType> AllocatorPair{};
+};
+
+template <HAKLE_CONCEPT( IsFreeListNode ) Node, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<Node>>
+class FreeList_DAS {
+public:
+#ifndef HAKLE_USE_CONCEPT
+    static_assert( std::is_base_of<FreeListNode<Node>, Node>::value, "Node must be derived from FreeListNode<Node>" );
+#endif
+
+    using AllocatorType   = ALLOCATOR_TYPE;
+    using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
+
+    constexpr explicit FreeList_DAS( const AllocatorType& InAllocator = AllocatorType{} ) : AllocatorPair( HeadPtr{}, InAllocator ) { assert(Head().is_lock_free() && "Your platform must support DCAS for this to be lock-free"); }
+
+    HAKLE_CPP20_CONSTEXPR ~FreeList_DAS() { Clear(); }
+
+    HAKLE_CPP14_CONSTEXPR FreeList_DAS( FreeList_DAS&& Other ) noexcept : HAKLE_MOVE_PAIR_ATOMIC1( AllocatorPair ) { Other.Reset(); }
+
+    constexpr FreeList_DAS& operator=( FreeList_DAS&& Other ) noexcept {
+        if ( this != &Other ) {
+            Clear();
+            Head().store( Other.Head().load( std::memory_order_relaxed ), std::memory_order_relaxed );
+            Allocator() = std::move( Other.Allocator() );
+            Other.Reset();
+        }
+        return *this;
+    }
+
+    constexpr FreeList_DAS( const FreeList_DAS& Other )            = delete;
+    constexpr FreeList_DAS& operator=( const FreeList_DAS& Other ) = delete;
+
+    HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
+        Node* CurrentNode = Head().load( std::memory_order_relaxed ).Ptr;
+        while ( CurrentNode != nullptr ) {
+            Node* Next = CurrentNode->FreeListNext.load( std::memory_order_relaxed );
+            if ( !CurrentNode->HasOwner ) {
+                AllocatorTraits::Destroy( Allocator(), CurrentNode );
+                AllocatorTraits::Deallocate( Allocator(), CurrentNode );
+            }
+            CurrentNode = Next;
+        }
+    }
+
+    HAKLE_CPP14_CONSTEXPR void Reset() noexcept { Head().store( HeadPtr{}, std::memory_order_relaxed ); }
+
+    HAKLE_CPP14_CONSTEXPR void Add( Node* InNode ) noexcept {
+        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
+        HeadPtr NewHead{ InNode, 0 };
+
+        do {
+            NewHead.Tag = CurrentHead.Tag + 1;
+            InNode->FreeListNext.store( CurrentHead.Ptr, std::memory_order_relaxed );
+        } while ( !Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) );
+    }
+
+    HAKLE_CPP14_CONSTEXPR Node* TryGet() noexcept {
+        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
+        HeadPtr NewHead;
+        while ( CurrentHead.Ptr != nullptr ) {
+            NewHead.Ptr = CurrentHead.Ptr->FreeListNext.load( std::memory_order_relaxed );
+            NewHead.Tag = CurrentHead.Tag + 1;
+            if ( Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+                break;
+            }
+        }
+        return CurrentHead.Ptr;
+    }
+
+    // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
+    // only useful when there is no contention (e.g. destruction)
+    constexpr Node* GetHead() const noexcept { return Head().load( std::memory_order_relaxed ).Ptr; }
+
+private:
+    struct HeadPtr {
+        Node*          Ptr{};
+        std::uint16_t Tag{};
+    };
+
+    HAKLE_CPP14_CONSTEXPR AllocatorType& Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType&       Allocator() const noexcept { return AllocatorPair.Second(); }
+    HAKLE_CPP14_CONSTEXPR std::atomic<HeadPtr>& Head() noexcept { return AllocatorPair.First(); }
+    constexpr const std::atomic<HeadPtr>&       Head() const noexcept { return AllocatorPair.First(); }
+
+    // compressed allocator
+    CompressPair<std::atomic<HeadPtr>, AllocatorType> AllocatorPair{};
 };
 
 template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>

@@ -82,7 +82,7 @@ enum class HashTableStatus {
 };
 
 // TODO: more useful
-template <class TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, std::size_t INITIAL_HASH_SIZE, class HashType = core::Hash<TKey>, class Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
+template <class TKey, HAKLE_CONCEPT( AtomicIsLockFree ) TValue, std::size_t INITIAL_HASH_SIZE, class HashType = core::Hash<TKey>, HAKLE_CONCEPT( IsAllocator ) Allocator = HakleAllocator<Pair<std::atomic<TKey>, std::atomic<TValue>>>>
 HAKLE_REQUIRES( IsSupportHash<TKey, HashType> )
 class HashTable {
 private:
@@ -106,7 +106,9 @@ public:
         MainHash().store( Node, std::memory_order_relaxed );
     }
 
-    HAKLE_CPP20_CONSTEXPR ~HashTable() { Clear(); }
+    HAKLE_CPP20_CONSTEXPR ~HashTable() noexcept {
+        Clear();
+    }
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     HAKLE_CPP14_CONSTEXPR HashTable( HashTable&& Other ) noexcept

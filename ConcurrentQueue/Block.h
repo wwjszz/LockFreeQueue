@@ -30,10 +30,12 @@ concept IsPolicy = requires( T& t, const T& ct, std::size_t Index, std::size_t C
 };
 
 template <class T>
-concept IsBlock = requires {
+concept IsBlock = requires( T& t, std::size_t Index ) {
     typename T::ValueType;
     { T::HasMeaningfulSetResult } -> std::convertible_to<bool>;
     { T::BlockSize } -> std::convertible_to<std::size_t>;
+    requires std::convertible_to<T*, std::remove_reference_t<decltype( t.Next )>>;
+    { t[ Index ] } -> std::convertible_to<typename T::ValueType*>;
 } && T::BlockSize > 1 && std::has_single_bit( static_cast<std::size_t>( T::BlockSize ) ) && IsPolicy<T>;
 
 template <std::size_t BLOCK_SIZE, class BLOCK_TYPE>
@@ -164,8 +166,8 @@ struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {
     using Policy::HasMeaningfulSetResult;
     constexpr static std::size_t BlockSize = BLOCK_SIZE;
 
-    HAKLE_CPP14_CONSTEXPR T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
-    constexpr const T* operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
+    HAKLE_CPP14_CONSTEXPR T* operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
+    constexpr const T*       operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
 
     alignas( T ) std::array<HAKLE_BYTE, sizeof( T ) * BLOCK_SIZE> Elements{};
 
