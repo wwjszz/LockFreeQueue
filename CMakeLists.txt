@@ -27,12 +27,12 @@ endif ()
 include(FetchContent)
 
 macro(fetch_or_use_local name url tag local_dir)
-    # 检查是否存在完整的源码（CMakeLists.txt + .git 目录）
+    # check if directory exists
     if (EXISTS ${local_dir}/CMakeLists.txt AND EXISTS ${local_dir}/.git)
         message(STATUS "Found existing ${name} at ${local_dir}, skip downloading")
         add_subdirectory(${local_dir} ${CMAKE_BINARY_DIR}/${name}-build)
     else ()
-        # 如果目录存在但不完整，先删除
+        # if exists and not complete
         if (EXISTS ${local_dir})
             message(STATUS "Removing incomplete ${name} at ${local_dir}...")
             file(REMOVE_RECURSE ${local_dir})
@@ -125,7 +125,8 @@ target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
 target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
 
 target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
-# if use FreeList_DAS, use target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main libatomic)
+# if use FreeList_DAS
+#target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main libatomic)
 target_link_libraries(obj_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
 
 target_compile_definitions(hashtabletest PRIVATE ENABLE_MEMORY_LEAK_DETECTION)

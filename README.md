@@ -40,7 +40,7 @@ Main queue class providing multi-producer multi-consumer concurrent queue functi
 
 Since this is a header-only library, simply include the necessary headers:
 
-```cpp
+```c++
 #include "ConcurrentQueue/ConcurrentQueue.h"
 ```
 
@@ -49,7 +49,7 @@ No linking required!
 ## Usage Examples
 
 ### Basic Usage
-```cpp
+```c++
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include <vector>
 
@@ -77,7 +77,7 @@ if (queue.TryDequeue(consumer_token, value)) {
 ```
 
 ### Bulk Operations
-```cpp
+```c++
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include <vector>
 
@@ -103,7 +103,7 @@ for (size_t i = 0; i < count; ++i) {
 ```
 
 ### Consumer Token Bulk Operations
-```cpp
+```c++
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include <vector>
 
@@ -149,3 +149,106 @@ This project draws inspiration from Cameron Desrochers' moodycamel concurrent qu
 ## License
 
 See the [LICENSE](./LICENSE) file for licensing information.
+
+## FreeList
+
+由于存在ABA问题，导致如果按照简单的CAS操作，会导致操作在不应该成功的情况下成功。可以通过添加Tag避免ABA问题：
+
+### DCAS
+
+`每次比较时，不仅比较头指针，还需要比较tag。这样在任何在ABA之后执行的操作都会失败。这种方法的问题就是目标架构必须支持足够长度的无锁操作。当然也可以通过压缩指针等方式来使其达到要求。`
+```c++
+    /**
+     * Head的tag是整个链表中最大的。
+     * 以H1为例，当H1被get的时候，H1之后的结点的tag被增加为最大的。
+     * 如果H1被重新add，那么当前的head的结点的tag一定不会被之前的小，这就保证了两次的tag不一样。
+     * 当然在某种极端环境，会存在溢出，不过这种情况几乎不可能发生。
+     */
+    void Add( Node* InNode ) noexcept {
+        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
+        HeadPtr NewHead{ InNode, 0 };
+
+        do {
+            NewHead.Tag = CurrentHead.Tag + 1;
+            InNode->FreeListNext.store( CurrentHead.Ptr, std::memory_order_relaxed );
+        } while ( !Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) );
+    }
+
+    Node* TryGet() noexcept {
+        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
+        HeadPtr NewHead;
+        while ( CurrentHead.Ptr != nullptr ) {
+            NewHead.Ptr = CurrentHead.Ptr->FreeListNext.load( std::memory_order_relaxed );
+            NewHead.Tag = CurrentHead.Tag + 1;
+            if ( Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+                break;
+            }
+        }
+        return CurrentHead.Ptr;
+    }
+```
+
+### 引用计数
+
+`引入一个计数，用来表示当前有多少对象在使用当前结点，这样add的时候，如果检测到有对象在使用当前结点，就可以将add的任务交给最后一个离开结点的结点`
+
+```c++
+    /**
+     * 在链表中且没有对象在使用的结点的引用计数为1
+     */
+    void Add( Node* InNode ) noexcept {
+        // Set AddFlag first
+        if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
+            Node* CurrentHead = Head().load( std::memory_order_relaxed );
+            while ( true ) {
+                // first update next then refs
+                InNode->FreeListNext.store( CurrentHead, std::memory_order_relaxed );
+                InNode->FreeListRefs.store( 1, std::memory_order_release );
+                // refs may increase
+                if ( !Head().compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+                    // if exchange failed, check if someone is using it
+                    if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
+                        continue;
+                    } // else we can let the last user add it
+                }
+                return;
+            }
+        }
+    }
+
+    Node* TryGet() noexcept {
+        Node* CurrentHead = Head().load( std::memory_order_relaxed );
+        while ( CurrentHead != nullptr ) {
+            Node*    PrevHead = CurrentHead;
+            uint32_t Refs     = CurrentHead->FreeListRefs.load( std::memory_order_relaxed );
+            if ( ( Refs & RefsMask ) == 0  // check if already taken or adding
+                 || ( !CurrentHead->FreeListRefs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
+                                                                          std::memory_order_relaxed ) ) )  // try add refs
+            {
+                CurrentHead = Head().load( std::memory_order_relaxed );
+                continue;
+            }
+
+            // try Taken
+            Node* Next = CurrentHead->FreeListNext.load( std::memory_order_relaxed );
+            if ( Head().compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+                // taken success, decrease refcount twice, for our and list's ref
+                CurrentHead->FreeListRefs.fetch_add( -2, std::memory_order_relaxed );
+                return CurrentHead;
+            }
+
+            // taken failed, decrease refcount
+            Refs = PrevHead->FreeListRefs.fetch_add( -1, std::memory_order_relaxed );
+            if ( Refs == AddFlag + 1 ) {
+                // no one is using it, add it back
+                InnerAdd( PrevHead );
+            }
+        }
+        return nullptr;
+    }
+```
+
+## LockFreeHashTable
+
+### LockFree LinearSearch
+
