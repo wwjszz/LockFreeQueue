@@ -190,7 +190,7 @@ See the [LICENSE](./LICENSE) file for licensing information.
 
 ### 引用计数
 
-`引入一个计数，用来表示当前有多少对象在使用当前结点，这样add的时候，如果检测到有对象在使用当前结点，就可以将add的任务交给最后一个离开结点的结点`
+`引入一个计数，用来表示当前有多少对象在使用当前结点，这样add的时候，如果检测到有对象在使用当前结点，就可以将add的任务交给最后一个离开结点的结点。`
 
 ```c++
     /**
@@ -252,3 +252,197 @@ See the [LICENSE](./LICENSE) file for licensing information.
 
 ### LockFree LinearSearch
 
+`简单的线性表查找，基于CAS操作。`
+
+```c++
+/**
+ * 简单的无锁线性表查找，INVALID_KEY=0
+ */
+void SetItem( int InKey, int InValue ) noexcept {
+    for ( LinearSearchMapEntry& Entry : Data ) {
+        int CurrentKey = Entry.Key.Load();
+
+        if ( CurrentKey != InKey ) {
+            if ( CurrentKey != 0 )
+                continue;
+
+            if ( !Entry.Key.CompareExchangeStrong( CurrentKey, InKey ) && CurrentKey != 0 && CurrentKey != InKey )
+                continue;
+        }
+        Entry.Value.Store( InValue );
+        return;
+    }
+}
+
+int GetItem( int InKey ) const noexcept {
+    for ( const LinearSearchMapEntry& Entry : Data ) {
+        int CurrentKey = Entry.Key.Load();
+        if ( CurrentKey == InKey )
+            return Entry.Value.Load();
+        if ( CurrentKey == 0 )
+            break;
+    }
+    return 0;
+}
+```
+
+### 固定大小的HashTable
+
+`查找过程与线性查找类似，只不过开始位置为hash(key)。`
+
+```c++
+/**
+ * 固定大小的Hashtable
+ */
+void SetItem( uint32_t InKey, uint32_t InValue ) noexcept {
+    for ( uint32_t idx = IntegerHash( InKey );; ++idx ) {
+        idx &= ( N - 1 );
+        HashTableEntry& Entry = Data[ idx ];
+
+        uint32_t CurrentKey = Entry.Key.Load();
+        if ( CurrentKey != InKey ) {
+            if ( CurrentKey != 0 )
+                continue;
+
+            if ( !Entry.Key.CompareExchangeStrong( CurrentKey, InKey ) && CurrentKey != 0 && CurrentKey != InKey )
+                continue;
+        }
+        Entry.Value.Store( InValue );
+        return;
+    }
+}
+
+int GetItem( uint32_t InKey ) const noexcept {
+    for ( uint32_t idx = IntegerHash( InKey );; ++idx ) {
+        idx &= ( N - 1 );
+        const HashTableEntry& Entry = Data[ idx ];
+
+        uint32_t CurrentKey = Entry.Key.Load();
+        if ( CurrentKey == InKey )
+            return Entry.Value.Load();
+        if ( CurrentKey == 0 )
+            break;
+    }
+    return 0;
+}
+```
+
+### 可变大小的HashTable
+
+`将多个固定大小的HashTable，链接起来就是可变大小的HashTable。`
+
+
+```c++
+/**
+ * 如果发现不是从头部HashNode获取到的Value，则再把{Key, Value}写入头部HashNode
+ */
+struct HashNode {
+    constexpr HashNode() = default;
+    constexpr explicit HashNode( std::size_t InCapacity ) noexcept : Capacity( InCapacity ) {}
+
+    HashNode*   Prev{ nullptr };
+    std::size_t Capacity{ 0 };
+    Entry*      Entries{ nullptr };
+};
+
+HAKLE_CPP14_CONSTEXPR Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
+    std::size_t HashId = Hash( Key );
+    for ( HashNode* CurrentHash = CurrentMainHash; CurrentHash != nullptr; CurrentHash = CurrentHash->Prev ) {
+        std::size_t Index = HashId;
+
+        while ( true ) {
+            Index &= CurrentHash->Capacity - 1;
+
+            TKey CurrentKey = CurrentHash->Entries[ Index ].First.load( std::memory_order_relaxed );
+            if ( CurrentKey == Key ) {
+                TValue CurrentValue = CurrentHash->Entries[ Index ].Second.load( std::memory_order_acquire );
+
+                if ( CurrentHash != CurrentMainHash ) {
+                    Index                          = HashId;
+                    const std::size_t MainCapacity = CurrentMainHash->Capacity;
+
+                    while ( true ) {
+                        Index &= MainCapacity - 1;
+                        auto Empty = INVALID_KEY;
+                        if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+                            CurrentMainHash->Entries[ Index ].Second.store( CurrentValue, std::memory_order_release );
+                            break;
+                        }
+                        ++Index;
+                    }
+                }
+
+                return &CurrentMainHash->Entries[ Index ];
+            }
+            if ( CurrentKey == INVALID_KEY ) {
+                break;
+            }
+            ++Index;
+        }
+    }
+    return nullptr;
+}
+
+HAKLE_CPP14_CONSTEXPR bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
+    std::size_t NewCount = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
+
+    while ( true ) {
+        if ( NewCount >= ( CurrentMainHash->Capacity >> 1 ) && !HashResizeInProgressFlag().test_and_set( std::memory_order_acquire ) ) {
+            CurrentMainHash = MainHash().load( std::memory_order_acquire );
+            if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) ) {
+                HashResizeInProgressFlag().clear( std::memory_order_relaxed );
+            }
+            else {
+                std::size_t NewCapacity = CurrentMainHash->Capacity << 1;
+                while ( NewCount >= NewCapacity >> 1 ) {
+                    NewCount <<= 1;
+                }
+                HashNode* NewHash = CreateNewHashNode( NewCapacity );
+                if ( NewHash == nullptr ) {
+                    EntriesCount.fetch_sub( 1, std::memory_order_relaxed );
+                    return false;
+                }
+                NewHash->Prev = CurrentMainHash;
+                MainHash().store( NewHash, std::memory_order_release );
+                HashResizeInProgressFlag().clear( std::memory_order_release );
+                CurrentMainHash = NewHash;
+            }
+        }
+
+        // if there is enough space, add the new entry
+        if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) + ( CurrentMainHash->Capacity >> 2 ) ) {
+            std::size_t HashId = Hash( Key );
+            std::size_t Index  = HashId;
+            while ( true ) {
+                Index &= CurrentMainHash->Capacity - 1;
+
+                TKey CurrentKey = CurrentMainHash->Entries[ Index ].First.load( std::memory_order_relaxed );
+                if ( CurrentKey == INVALID_KEY ) {
+                    TKey Empty = INVALID_KEY;
+                    if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
+                        CurrentMainHash->Entries[ Index ].Second.store( InValue, std::memory_order_release );
+                        break;
+                    }
+                }
+
+                ++Index;
+            }
+            return true;
+        }
+
+        CurrentMainHash = MainHash().load( std::memory_order_acquire );
+    }
+}
+```
+
+## LockFree SPMC Queue
+
+`这个项目的SPMC队列本质是一个Block数组的链表，Block内有BlockSize个元素，与可变大小的HashTable类似，SPMC队列也是使用链表来实现可变大小。只不过对于FastQueue来说，内部更能看作是一个Block的链表，IndexEntry只是用来承载Block，以便于计算索引等等。SlowQueue的话则没有利用这个链表，它纯粹是一个IndexEntry数组。`
+
+### FastQueue
+
+`FastQueue会将使用过的Block放在链表里但不会回收，当用到时直接放在空的IndexEntry就可以使用`
+
+### SlowQueue
+
+`SlowQueue设计上是全局的Queue，所以尽可能的减少内存占用，SlowQueue会将使用过的Block直接返回给BlockManager，以便供其他队列使用。`
